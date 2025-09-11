@@ -112,7 +112,7 @@ export function DashboardCharts({ monthlyData, topCorridors, summaryStats, count
         </DashboardCard>
 
         <DashboardCard title="Active Corridors" className="bg-gradient-to-br from-chart-2/10 to-chart-2/5">
-          <div className="text-3xl font-bold text-chart-2">{summaryStats.uniqueCorridors}</div>
+          <div className="text-3xl font-bold text-chart-2">{Math.round(summaryStats.uniqueCorridors).toLocaleString()}</div>
           <p className="text-sm text-muted-foreground mt-1">Country-to-country routes</p>
         </DashboardCard>
 

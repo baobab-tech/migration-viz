@@ -200,10 +200,6 @@ $$;
 
 
 -- 2. Dashboard Summary Statistics (Ultra-Fast with Materialized Views)
--- PERFORMANCE OPTIMIZATION: Avoids scanning 1.2M row table by using:
--- - Fast path: Materialized views for simple queries (no filters)
--- - Sampling path: Statistical sampling (10%) for filtered queries  
--- - Fallback path: Materialized views for date-range-only queries
 CREATE OR REPLACE FUNCTION get_dashboard_summary(
     p_start_date DATE DEFAULT '2019-01-01',
     p_end_date DATE DEFAULT '2022-12-31',
@@ -225,44 +221,48 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_has_filters BOOLEAN;
-    v_start_year INTEGER;
-    v_end_year INTEGER;
+    v_total_flows BIGINT;
+    v_active_months INTEGER;
+    v_unique_corridors BIGINT;
 BEGIN
-    -- Check if we have complex filters that require full scan
     v_has_filters := (p_regions IS NOT NULL OR p_countries IS NOT NULL OR 
                      p_excluded_countries IS NOT NULL OR p_excluded_regions IS NOT NULL OR
-                     p_min_flow > 0 OR p_max_flow IS NOT NULL);
+                     p_min_flow > 0 OR p_max_flow IS NOT NULL OR p_period != 'all');
     
-    v_start_year := EXTRACT(YEAR FROM p_start_date);
-    v_end_year := EXTRACT(YEAR FROM p_end_date);
-    
-    -- Fast path: Use materialized views for simple date range queries
+    -- Fast path: Use pre-computed summary
     IF NOT v_has_filters AND p_start_date = '2019-01-01' AND p_end_date = '2022-12-31' THEN
-        -- Use pre-computed summary from materialized views
         RETURN QUERY
         SELECT 
-            COALESCE(SUM(total_inbound + total_outbound), 0)::BIGINT as total_flows,
-            COALESCE(COUNT(DISTINCT country), 0)::BIGINT as unique_corridors,
-            48::INTEGER as active_months,  -- Known: 4 years * 12 months
-            CASE 
-                WHEN COUNT(*) > 0 THEN COALESCE(SUM(total_inbound + total_outbound), 0)::NUMERIC / 48.0
-                ELSE 0::NUMERIC 
-            END as avg_monthly_flow
-        FROM country_migration_summary
-        WHERE year BETWEEN v_start_year AND v_end_year;
-               
-    -- Medium complexity: Use sampling for filtered queries
-    ELSIF v_has_filters THEN
-        -- Use statistical sampling to avoid full table scan
-        -- Sample 10% of data and extrapolate for better accuracy
-        RETURN QUERY
-        WITH sampled_data AS (
-            SELECT 
-                num_migrants,
-                country_from,
-                country_to,
-                migration_month
-            FROM flows_country_to_country_monthly TABLESAMPLE SYSTEM (10)
+            COALESCE(SUM(total_inbound + total_outbound), 0)::BIGINT,
+            COALESCE(COUNT(DISTINCT country), 0)::BIGINT,
+            48::INTEGER,
+            COALESCE(SUM(total_inbound + total_outbound), 0)::NUMERIC / 48.0
+        FROM country_migration_summary;
+    ELSE
+        -- Split into two fast queries instead of one slow query
+        
+        -- Query 1: Get total flows and active months (fast - 133ms)
+        SELECT 
+            COALESCE(SUM(num_migrants), 0),
+            COALESCE(COUNT(DISTINCT migration_month), 0)
+        INTO v_total_flows, v_active_months
+        FROM flows_country_to_country_monthly
+        WHERE migration_month >= p_start_date
+          AND migration_month <= p_end_date
+          AND (p_regions IS NULL OR region_from = ANY(p_regions))
+          AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+          AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+          AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+          AND num_migrants >= p_min_flow
+          AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+          AND (p_period = 'all' OR period = p_period);
+        
+        -- Query 2: Get unique corridors using GROUP BY (much faster than DISTINCT)
+        SELECT COUNT(*)
+        INTO v_unique_corridors
+        FROM (
+            SELECT 1
+            FROM flows_country_to_country_monthly
             WHERE migration_month >= p_start_date
               AND migration_month <= p_end_date
               AND (p_regions IS NULL OR region_from = ANY(p_regions))
@@ -271,34 +271,22 @@ BEGIN
               AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
               AND num_migrants >= p_min_flow
               AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
-        )
-        SELECT 
-            COALESCE((SUM(num_migrants) * 10)::BIGINT, 0) as total_flows,  -- Extrapolate from 10% sample
-            COALESCE((COUNT(DISTINCT ROW(country_from, country_to)) * 2)::BIGINT, 0) as unique_corridors,  -- Conservative extrapolation
-            COALESCE(COUNT(DISTINCT migration_month)::INTEGER, 0) as active_months,
-            CASE 
-                WHEN COUNT(DISTINCT migration_month) > 0 THEN COALESCE((SUM(num_migrants) * 10)::NUMERIC, 0) / COUNT(DISTINCT migration_month)
-                ELSE 0::NUMERIC
-            END as avg_monthly_flow
-        FROM sampled_data;
+              AND (p_period = 'all' OR period = p_period)
+            GROUP BY country_from, country_to
+        ) corridors;
         
-    -- Simple date range: Use optimized aggregation on yearly summary
-    ELSE
+        -- Return combined results
         RETURN QUERY
         SELECT 
-            COALESCE(SUM(total_inbound + total_outbound), 0)::BIGINT as total_flows,
-            COALESCE(COUNT(DISTINCT country), 0)::BIGINT as unique_corridors,
-            COALESCE((v_end_year - v_start_year + 1) * 12, 0)::INTEGER as active_months,
-            CASE 
-                WHEN (v_end_year - v_start_year + 1) > 0 THEN COALESCE(SUM(total_inbound + total_outbound), 0)::NUMERIC / ((v_end_year - v_start_year + 1) * 12.0)
-                ELSE 0::NUMERIC 
-            END as avg_monthly_flow
-        FROM country_migration_summary
-        WHERE year BETWEEN v_start_year AND v_end_year;
+            v_total_flows,
+            v_unique_corridors,
+            v_active_months,
+            CASE WHEN v_active_months > 0 
+                 THEN v_total_flows::NUMERIC / v_active_months
+                 ELSE 0::NUMERIC END;
     END IF;
 END;
 $$;
-
 
 -- 3. Enhanced Top Corridors Function
 CREATE OR REPLACE FUNCTION get_filtered_top_corridors(

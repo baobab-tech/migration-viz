@@ -12,9 +12,8 @@ The database layer is designed for **performance optimization** when working wit
 
 ## 📋 Files Overview
 
-- **`base.sql`** - Core table definitions and initial setup
 - **`functions.sql`** - Main query functions optimized for UI dashboards
-- **`pattern_analysis_functions.sql`** - Advanced pattern analysis and seasonal data functions
+- **`pattern_analysis_functions.sql`** - Advanced pattern analysis and seasonal data functions  
 - **`views.sql`** - Materialized views for performance optimization
 - **`indices.sql`** - Database indices for query performance
 - **`policies.sql`** - Row-level security and access policies
@@ -24,52 +23,62 @@ The database layer is designed for **performance optimization** when working wit
 ### Dashboard Functions
 
 #### `get_monthly_migration_totals()`
-Returns time-series data for monthly migration totals with comprehensive filtering.
+Returns time-series data for monthly migration totals with comprehensive filtering and flexible time aggregation.
 
 **Parameters:**
-- `p_start_date`, `p_end_date` - Date range
+- `p_start_date`, `p_end_date` - Date range (default: '2019-01-01' to '2022-12-31')
 - `p_regions[]`, `p_countries[]` - Include specific regions/countries
 - `p_excluded_countries[]`, `p_excluded_regions[]` - Exclude specific regions/countries  
 - `p_min_flow`, `p_max_flow` - Flow volume filters
-- `p_period` - Time period grouping
+- `p_period` - Time period grouping (default: 'all')
+- `p_time_aggregation` - 'monthly', 'quarterly', or 'yearly' (default: 'monthly')
 
 **Returns:** `(month DATE, total_migrants BIGINT)`
 
 #### `get_dashboard_summary()`
-Ultra-fast summary statistics using performance-optimized paths:
-- **Fast path**: Uses materialized views for unfiltered queries
-- **Sampling path**: 10% statistical sampling for complex filters
-- **Fallback path**: Yearly summary aggregation for simple date ranges
+
+**Parameters:**
+- Standard filtering parameters
+- `p_period` - Time period grouping (default: 'all')
 
 **Returns:** `(total_flows BIGINT, unique_corridors BIGINT, active_months INTEGER, avg_monthly_flow NUMERIC)`
 
 #### `get_filtered_top_corridors()`
 Returns top migration corridors with smart optimization - uses pre-computed views when possible, falls back to live aggregation for filtered queries.
 
+**Parameters:**
+- Standard filtering parameters
+- `p_limit` - Number of top corridors to return (default: 10)
+
 **Returns:** `(country_from VARCHAR(2), country_to VARCHAR(2), total_migrants BIGINT, corridor TEXT)`
 
 ### Time Series Functions
 
 #### `get_corridor_time_series()`
-Multi-corridor time series data for comparative visualization.
+Multi-corridor time series data for comparative visualization with flexible time aggregation.
 
 **Parameters:**
 - `p_corridors[]` - Array of 'FROM-TO' corridor strings
+- `p_time_aggregation` - 'monthly', 'quarterly', or 'yearly'
 - Standard filtering parameters
 
 **Returns:** `(corridor TEXT, country_from VARCHAR(2), country_to VARCHAR(2), month DATE, migrants BIGINT)`
 
 #### `get_quarterly_migration_data()`
-Flexible temporal aggregation supporting both monthly and quarterly views.
+Flexible temporal aggregation supporting both monthly and quarterly views with seasonal labeling.
 
 **Parameters:**
-- `p_time_aggregation` - 'monthly' or 'quarterly'
+- `p_time_aggregation` - 'monthly' or 'quarterly' (default: 'monthly')
 - Standard filtering parameters
 
 **Returns:** `(month DATE, total BIGINT, season TEXT, quarter INTEGER)`
 
 #### `get_seasonal_migration_patterns()`
-Monthly seasonal pattern analysis with statistical aggregations.
+Seasonal pattern analysis with statistical aggregations, supporting multiple time aggregations.
+
+**Parameters:**
+- Standard filtering parameters
+- `p_time_aggregation` - 'monthly', 'quarterly', or 'yearly' (default: 'monthly')
 
 **Returns:** `(month TEXT, average BIGINT, max_value BIGINT, min_value BIGINT)`
 
