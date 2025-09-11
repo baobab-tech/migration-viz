@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import type { MigrationFilters } from '@/lib/types'
+import { normalizeDate } from './utils'
 
 // Cache for country names to avoid repeated DB calls
 let countryNameCache: Map<string, string> | null = null
@@ -31,26 +32,6 @@ async function getCountryNameMapping(): Promise<Map<string, string>> {
 }
 
 
-/**
- * Convert partial dates (YYYY-MM) to full dates (YYYY-MM-01)
- * Since monthly data is stored with 1st day of month
- */
-function normalizeDate(dateStr: string): string {
-    if (!dateStr) return dateStr
-
-    // If already a full date (YYYY-MM-DD), return as is
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        return dateStr
-    }
-
-    // If partial date (YYYY-MM), add -01 for first day of month
-    if (dateStr.match(/^\d{4}-\d{2}$/)) {
-        return `${dateStr}-01`
-    }
-
-    // Return as-is for other formats
-    return dateStr
-}
 
 /**
  * Server-side function to get country name mappings for labels
@@ -123,7 +104,7 @@ export async function getMonthlyTotalsServer(filters: MigrationFilters = {}): Pr
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
 
         const { data, error } = await supabase.rpc('get_monthly_migration_totals', {
             p_start_date: startDate,
@@ -168,7 +149,7 @@ export async function getDashboardSummaryServer(filters: MigrationFilters = {}):
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
 
         const { data, error } = await supabase.rpc('get_dashboard_summary', {
             p_start_date: startDate,
@@ -213,7 +194,7 @@ export async function getTopCorridorsServer(filters: MigrationFilters = {}, limi
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
 
         const { data, error } = await supabase.rpc('get_filtered_top_corridors', {
             p_start_date: startDate,
@@ -270,7 +251,7 @@ export async function getCorridorTimeSeriesServer(
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
         
         const { data, error } = await supabase.rpc('get_corridor_time_series', {
             p_corridors: corridors.length > 0 ? corridors : null,
@@ -376,7 +357,7 @@ export async function getQuarterlyDataServer(filters: MigrationFilters = {}): Pr
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
         
         const { data, error } = await supabase.rpc('get_quarterly_migration_data', {
             p_start_date: startDate,
@@ -417,7 +398,7 @@ export async function getSeasonalPatternsServer(filters: MigrationFilters = {}):
     try {
         const supabase = await createClient()
         const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
         
         const { data, error } = await supabase.rpc('get_seasonal_migration_patterns', {
             p_start_date: startDate,

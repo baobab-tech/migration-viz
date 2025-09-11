@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/client'
 import type { Tables } from '@/lib/db_generated_types'
 import type { MigrationFlow, MigrationFilters } from '@/lib/types'
+import { normalizeDate } from './utils'
 
 // Type aliases for better readability  
 type CountryMigrationSummary = Tables<'country_migration_summary'>
@@ -9,26 +10,7 @@ type CorridorRankings = Tables<'flows_corridor_rankings_annual'>
 // Get Supabase client
 const supabase = createClient()
 
-/**
- * Convert partial dates (YYYY-MM) to full dates (YYYY-MM-01)
- * Since monthly data is stored with 1st day of month
- */
-function normalizeDate(dateStr: string): string {
-    if (!dateStr) return dateStr
-    
-    // If already a full date (YYYY-MM-DD), return as is
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        return dateStr
-    }
-    
-    // If partial date (YYYY-MM), add -01 for first day of month
-    if (dateStr.match(/^\d{4}-\d{2}$/)) {
-        return `${dateStr}-01`
-    }
-    
-    // Return as-is for other formats
-    return dateStr
-}
+
 
 // Synchronous countries array for backward compatibility
 export const countries: Array<{ code: string; name: string; region: string; lat?: number; lng?: number }> = []
@@ -180,7 +162,7 @@ export async function getMigrationFlows(filters: MigrationFilters = {}): Promise
         if (filters.dateRange && filters.dateRange.length === 2) {
             // Convert partial dates (YYYY-MM) to full dates (YYYY-MM-01)
             const startDate = normalizeDate(filters.dateRange[0])
-            const endDate = normalizeDate(filters.dateRange[1])
+            const endDate = normalizeDate(filters.dateRange[1], true)
             
             query = query
                 .gte('migration_month', startDate)
