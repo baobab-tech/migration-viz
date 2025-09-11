@@ -1,6 +1,8 @@
 "use client"
 
 import type { ReactNode } from "react"
+import Link from "next/link"
+import { Info } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface DashboardLayoutProps {
@@ -13,11 +15,22 @@ export function DashboardLayout({ children, title, description }: DashboardLayou
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <div className="container mx-auto p-6 space-y-6">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-balance bg-gradient-to-r from-primary to-primary bg-clip-text text-transparent">
             {title}
           </h1>
-          {description && <p className="text-lg text-muted-foreground text-pretty max-w-2xl mx-auto">{description}</p>}
+          {description && (
+            <div className="flex items-center justify-center gap-4 max-w-2xl mx-auto">
+              <p className="text-lg text-muted-foreground text-pretty">{description}</p>
+              <Link 
+                href="/about-data"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors bg-muted/30 hover:bg-muted/50 px-3 py-2 rounded-lg border border-border/50 whitespace-nowrap"
+              >
+                <Info className="h-4 w-4" />
+                About the source data
+              </Link>
+            </div>
+          )}
         </div>
         {children}
       </div>

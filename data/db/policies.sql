@@ -35,14 +35,11 @@ USING (true);
 -- - flows_country_to_country_monthly
 -- - flows_region_to_country_monthly  
 -- - flows_country_to_region_monthly
--- - flows_region_to_region_monthly
--- - flows_subregion_to_subregion_monthly
--- - flows_intermediate_to_intermediate_monthly
+-- - flows_regional_monthly (unified regional view)
 -- - flows_country_to_country_quarterly
 -- - flows_country_to_country_annual
--- - flows_region_to_region_annual
--- - flows_pandemic_comparison_country
--- - flows_seasonal_patterns_country
+-- - flows_regional_annual (unified regional view)
+-- - flows_corridor_monthly_agg (corridor analysis)
 -- - flows_rolling_averages_top100
 -- - flows_gross_annual_country
 -- - flows_net_annual_country  

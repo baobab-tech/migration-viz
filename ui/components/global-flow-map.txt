@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { countries, type MigrationFlow, getCountryNameMappings } from "@/lib/queries"
+import { countries, type MigrationFlow } from "@/lib/queries"
+import { COUNTRY_NAME_MAPPINGS } from "@/lib/country-mappings"
 import { worldMapPaths, countryCentroids } from "./world-map-data"
 import { Globe, Filter } from "lucide-react"
 
@@ -30,15 +31,7 @@ export function GlobalFlowMap({ data }: GlobalFlowMapProps) {
 
   // Load country names on mount
   useEffect(() => {
-    const loadCountryNames = async () => {
-      try {
-        const names = await getCountryNameMappings()
-        setCountryNames(names)
-      } catch (error) {
-        console.error('Error loading country names:', error)
-      }
-    }
-    loadCountryNames()
+    setCountryNames(COUNTRY_NAME_MAPPINGS)
   }, [])
 
   const projectToSVG = (lat: number, lng: number) => {

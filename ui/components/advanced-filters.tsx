@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import Fuse from "fuse.js"
+import { useLocalStorage } from "usehooks-ts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -9,18 +10,24 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Filter, Save, Download, RefreshCw, CalendarIcon, Globe, Settings, Bookmark, X } from "lucide-react"
-import type { FilterState } from "./filter-controls"
-import { countries, getAvailableRegions, loadCountriesData, getCountryNameMappings } from "@/lib/queries"
+import { Search, Filter, Save, Download, RefreshCw, CalendarIcon, Globe, Settings, X, BookmarkIcon } from "lucide-react"
+import type { FilterState } from "@/lib/types"
+import { countries, getAvailableRegions, loadCountriesData } from "@/lib/queries"
+import { COUNTRY_NAME_MAPPINGS } from "@/lib/country-mappings"
+
+interface SearchResult {
+  type: 'country' | 'region'
+  id: string
+  name: string
+  score: number
+}
 
 interface AdvancedFiltersProps {
   filters: ExtendedFilterState
   onFiltersChange: (filters: ExtendedFilterState) => void
-  onSavePreset: (name: string, filters: ExtendedFilterState) => void
-  savedPresets: { name: string; filters: ExtendedFilterState }[]
+  onSavePreset?: (name: string, filters: ExtendedFilterState) => void
+  savedPresets?: { name: string; filters: ExtendedFilterState }[]
 }
 
 export interface ExtendedFilterState extends FilterState {
@@ -36,25 +43,108 @@ export interface ExtendedFilterState extends FilterState {
   seasonalityFilter: boolean
 }
 
-export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedPresets }: AdvancedFiltersProps) {
+// Default presets
+const DEFAULT_PRESETS: { name: string; filters: ExtendedFilterState }[] = [
+  {
+    name: "European Focus",
+    filters: {
+      dateRange: ["2019-01", "2022-12"],
+      selectedRegions: ["Europe"],
+      selectedCountries: [],
+      minFlowSize: 100,
+      maxFlowSize: 10000000,
+      viewType: "absolute",
+      searchQuery: "",
+      excludedCountries: [],
+      excludedRegions: [],
+      flowDirection: "all",
+      timeAggregation: "quarterly",
+      showTrends: true,
+      highlightAnomalies: false,
+      correlationThreshold: 0.6,
+      volatilityFilter: [10, 90],
+      seasonalityFilter: false,
+    }
+  },
+  {
+    name: "Major Flows Only",
+    filters: {
+      dateRange: ["2020-01", "2022-12"],
+      selectedRegions: [],
+      selectedCountries: [],
+      minFlowSize: 1000,
+      maxFlowSize: 10000000,
+      viewType: "absolute",
+      searchQuery: "",
+      excludedCountries: [],
+      excludedRegions: [],
+      flowDirection: "all",
+      timeAggregation: "yearly",
+      showTrends: true,
+      highlightAnomalies: true,
+      correlationThreshold: 0.7,
+      volatilityFilter: [0, 70],
+      seasonalityFilter: true,
+    }
+  },
+  {
+    name: "Regional Analysis",
+    filters: {
+      dateRange: ["2019-01", "2022-12"],
+      selectedRegions: ["Africa", "Asia"],
+      selectedCountries: [],
+      minFlowSize: 50,
+      maxFlowSize: 10000000,
+      viewType: "per-capita",
+      searchQuery: "",
+      excludedCountries: [],
+      excludedRegions: [],
+      flowDirection: "all",
+      timeAggregation: "monthly",
+      showTrends: false,
+      highlightAnomalies: true,
+      correlationThreshold: 0.5,
+      volatilityFilter: [0, 100],
+      seasonalityFilter: false,
+    }
+  }
+]
+
+export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedPresets: propSavedPresets }: AdvancedFiltersProps) {
   const [presetName, setPresetName] = useState("")
   const [isExpanded, setIsExpanded] = useState(false)
   const [availableRegions, setAvailableRegions] = useState<string[]>([])
   const [dataLoaded, setDataLoaded] = useState(false)
   const [countryNames, setCountryNames] = useState<Record<string, string>>({})
+  const [currentPreset, setCurrentPreset] = useState<string | null>(null)
+  const [customPresets, setCustomPresets] = useLocalStorage('migration-viz-presets', [] as { name: string; filters: ExtendedFilterState }[])
+
+  // Combine default presets with custom presets
+  const savedPresets = useMemo(() => {
+    if (propSavedPresets) {
+      return propSavedPresets
+    }
+
+    return [...DEFAULT_PRESETS, ...customPresets]
+  }, [propSavedPresets, customPresets])
   
   // Keep search query internal - don't propagate to parent until selection is made
   const [internalSearchQuery, setInternalSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
+  
+  // Search states for exclusions
+  const [excludeCountrySearch, setExcludeCountrySearch] = useState("")
+  const [debouncedExcludeCountrySearch, setDebouncedExcludeCountrySearch] = useState("")
+  const [excludeRegionSearch, setExcludeRegionSearch] = useState("")
+  const [debouncedExcludeRegionSearch, setDebouncedExcludeRegionSearch] = useState("")
 
-  // Load countries data, regions, and country names on mount
+  // Load countries data and regions on mount
   useEffect(() => {
     const initializeData = async () => {
       try {
         await loadCountriesData()
-        const names = await getCountryNameMappings()
         setAvailableRegions(getAvailableRegions())
-        setCountryNames(names)
+        setCountryNames(COUNTRY_NAME_MAPPINGS)
         setDataLoaded(true)
       } catch (error) {
         console.error('Error loading countries data:', error)
@@ -64,42 +154,137 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
     initializeData()
   }, [])
 
+
+  // Check if current filters match the selected preset - if not, clear preset selection
+  useEffect(() => {
+    if (currentPreset) {
+      const preset = savedPresets.find(p => p.name === currentPreset)
+      if (preset) {
+        // Deep compare filters (excluding searchQuery which is internal)
+        const { searchQuery: _, ...currentFiltersClean } = filters
+        const { searchQuery: __, ...presetFiltersClean } = preset.filters
+        
+        if (JSON.stringify(currentFiltersClean) !== JSON.stringify(presetFiltersClean)) {
+          setCurrentPreset(null)
+        }
+      }
+    }
+  }, [filters, currentPreset, savedPresets])
+
   // Debounce internal search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(internalSearchQuery)
-    }, 150) // 150ms debounce
+    }, 200) 
 
     return () => clearTimeout(timer)
   }, [internalSearchQuery])
 
-  // Initialize Fuse.js for fuzzy search
-  const fuse = useMemo(() => {
-    if (!dataLoaded) return null
+  // Debounce exclude country search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedExcludeCountrySearch(excludeCountrySearch)
+    }, 200) 
+
+    return () => clearTimeout(timer)
+  }, [excludeCountrySearch])
+
+  // Debounce exclude region search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedExcludeRegionSearch(excludeRegionSearch)
+    }, 200) 
+
+    return () => clearTimeout(timer)
+  }, [excludeRegionSearch])
+
+  // Initialize Fuse.js instances once and reuse them
+  const searchInstances = useMemo(() => {
+    if (!dataLoaded) return { countryFuse: null, regionFuse: null }
     
-    return new Fuse(countries, {
+    const countryFuse = new Fuse(countries, {
       keys: [
         { name: 'name', weight: 0.7 },
         { name: 'code', weight: 0.2 },
         { name: 'region', weight: 0.1 }
       ],
-      threshold: 0.3, // Lower = more exact matches
+      threshold: 0.3,
       includeScore: true,
       minMatchCharLength: 1
     })
-  }, [dataLoaded])
 
-  // Optimized search results with Fuse.js
-  const searchResults = useMemo(() => {
-    if (!fuse || debouncedSearchQuery.length <= 1) {
+    const regionFuse = new Fuse(availableRegions, {
+      threshold: 0.3,
+      includeScore: true,
+      minMatchCharLength: 1
+    })
+    
+    return { countryFuse, regionFuse }
+  }, [dataLoaded, availableRegions])
+
+  // Optimized search results with reused Fuse.js instances
+  const searchResults = useMemo((): SearchResult[] => {
+    if (!dataLoaded || debouncedSearchQuery.length <= 1 || !searchInstances.countryFuse) {
       return []
     }
 
-    return fuse
+    const results: SearchResult[] = []
+
+    // Search countries using cached instance
+    const countryResults: SearchResult[] = searchInstances.countryFuse
       .search(debouncedSearchQuery)
-      .slice(0, 10)
-      .map((result: any) => result.item.code)
-  }, [fuse, debouncedSearchQuery])
+      .slice(0, 6)
+      .map((result) => ({
+        type: 'country' as const,
+        id: result.item.code,
+        name: countryNames[result.item.code] || result.item.code,
+        score: result.score || 0
+      }))
+    results.push(...countryResults)
+
+    // Search regions using cached instance
+    if (searchInstances.regionFuse) {
+      const regionResults: SearchResult[] = searchInstances.regionFuse
+        .search(debouncedSearchQuery)
+        .slice(0, 4)
+        .map((result) => ({
+          type: 'region' as const,
+          id: result.item,
+          name: result.item,
+          score: result.score || 0
+        }))
+      results.push(...regionResults)
+    }
+
+    // Sort by score and limit results
+    return results.sort((a, b) => a.score - b.score).slice(0, 10)
+  }, [searchInstances, debouncedSearchQuery, dataLoaded, countryNames])
+
+  // Search results for exclude countries using cached instance
+  const excludeCountryResults = useMemo(() => {
+    if (!searchInstances.countryFuse || debouncedExcludeCountrySearch.length <= 1) {
+      return []
+    }
+
+    return searchInstances.countryFuse
+      .search(debouncedExcludeCountrySearch)
+      .slice(0, 8)
+      .map((result) => result.item.code)
+      .filter((countryCode) => !filters.excludedCountries.includes(countryCode))
+  }, [searchInstances.countryFuse, debouncedExcludeCountrySearch, filters.excludedCountries])
+
+  // Search results for exclude regions using cached instance
+  const excludeRegionResults = useMemo(() => {
+    if (!searchInstances.regionFuse || debouncedExcludeRegionSearch.length <= 1) {
+      return []
+    }
+
+    return searchInstances.regionFuse
+      .search(debouncedExcludeRegionSearch)
+      .slice(0, 8)
+      .map((result) => result.item)
+      .filter((region) => !filters.excludedRegions.includes(region))
+  }, [searchInstances.regionFuse, debouncedExcludeRegionSearch, filters.excludedRegions])
 
   const updateFilters = useCallback((newFilters: Partial<ExtendedFilterState>) => {
     const updated = { ...filters, ...newFilters }
@@ -107,15 +292,20 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
   }, [filters, onFiltersChange])
 
   const clearAllFilters = useCallback(() => {
-    // Clear internal search query
+    // Clear all search queries
     setInternalSearchQuery("")
+    setExcludeCountrySearch("")
+    setExcludeRegionSearch("")
+    
+    // Clear current preset
+    setCurrentPreset(null)
     
     const cleared: ExtendedFilterState = {
       dateRange: ["2019-01", "2022-12"],
       selectedRegions: [],
       selectedCountries: [],
       minFlowSize: 0,
-      maxFlowSize: 10000,
+      maxFlowSize: 10000000,
       viewType: "absolute",
       searchQuery: "",
       excludedCountries: [],
@@ -132,17 +322,44 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
   }, [onFiltersChange])
 
   const loadPreset = useCallback((preset: { name: string; filters: ExtendedFilterState }) => {
-    // Clear internal search query when loading preset
+    // Clear all search queries when loading preset
     setInternalSearchQuery("")
+    setExcludeCountrySearch("")
+    setExcludeRegionSearch("")
+    
+    // Set current preset
+    setCurrentPreset(preset.name)
+    
     onFiltersChange(preset.filters)
   }, [onFiltersChange])
 
   const saveCurrentPreset = useCallback(() => {
     if (presetName.trim()) {
-      onSavePreset(presetName.trim(), filters)
+      const newPreset = { name: presetName.trim(), filters }
+      
+      // Check if preset name already exists in custom presets
+      const existingIndex = customPresets.findIndex(p => p.name === newPreset.name)
+      
+      if (existingIndex >= 0) {
+        // Update existing preset
+        const updatedPresets = [...customPresets]
+        updatedPresets[existingIndex] = newPreset
+        setCustomPresets(updatedPresets)
+      } else {
+        // Add new preset
+        setCustomPresets([...customPresets, newPreset])
+      }
+      
+      setCurrentPreset(newPreset.name)
+      
+      // Call parent callback if provided
+      if (onSavePreset) {
+        onSavePreset(presetName.trim(), filters)
+      }
+      
       setPresetName("")
     }
-  }, [presetName, filters, onSavePreset])
+  }, [presetName, filters, onSavePreset, customPresets, setCustomPresets])
 
   const addCountryFromSearch = useCallback((countryCode: string) => {
     if (!filters.selectedCountries.includes(countryCode)) {
@@ -153,6 +370,46 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
       const updated = {
         ...filters,
         selectedCountries: [...filters.selectedCountries, countryCode],
+      }
+      onFiltersChange(updated)
+    }
+  }, [filters, onFiltersChange])
+
+  const addRegionFromSearch = useCallback((region: string) => {
+    if (!filters.selectedRegions.includes(region)) {
+      // Clear internal search query
+      setInternalSearchQuery("")
+      
+      // Only update selectedRegions, not searchQuery
+      const updated = {
+        ...filters,
+        selectedRegions: [...filters.selectedRegions, region],
+      }
+      onFiltersChange(updated)
+    }
+  }, [filters, onFiltersChange])
+
+  const addExcludedCountryFromSearch = useCallback((countryCode: string) => {
+    if (!filters.excludedCountries.includes(countryCode)) {
+      // Clear exclude country search
+      setExcludeCountrySearch("")
+      
+      const updated = {
+        ...filters,
+        excludedCountries: [...filters.excludedCountries, countryCode],
+      }
+      onFiltersChange(updated)
+    }
+  }, [filters, onFiltersChange])
+
+  const addExcludedRegionFromSearch = useCallback((region: string) => {
+    if (!filters.excludedRegions.includes(region)) {
+      // Clear exclude region search
+      setExcludeRegionSearch("")
+      
+      const updated = {
+        ...filters,
+        excludedRegions: [...filters.excludedRegions, region],
       }
       onFiltersChange(updated)
     }
@@ -174,15 +431,6 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
     onFiltersChange(updated)
   }, [filters, onFiltersChange])
 
-  const addExcludedCountry = useCallback((countryCode: string) => {
-    if (!filters.excludedCountries.includes(countryCode)) {
-      const updated = {
-        ...filters,
-        excludedCountries: [...filters.excludedCountries, countryCode],
-      }
-      onFiltersChange(updated)
-    }
-  }, [filters, onFiltersChange])
 
   const removeExcludedCountry = useCallback((countryCode: string) => {
     const updated = {
@@ -206,8 +454,8 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
     filters.excludedCountries.length > 0 ||
     filters.excludedRegions.length > 0 ||
     filters.minFlowSize > 0 ||
-    filters.maxFlowSize < 10000 ||
-    filters.flowDirection !== "all" ||
+    filters.maxFlowSize < 10000000 ||
+    // filters.flowDirection !== "all" || // Hidden - not functional
     filters.timeAggregation !== "monthly" ||
     filters.showTrends ||
     filters.highlightAnomalies ||
@@ -232,45 +480,53 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                 active
               </Badge>
             )}
-          </CardTitle>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="text-xs">
-              <Settings className="h-3 w-3 mr-1" />
-              {isExpanded ? "Collapse" : "Expand"}
-            </Button>
-            {hasActiveFilters && (
-              <Button variant="outline" size="sm" onClick={clearAllFilters} className="text-xs bg-transparent">
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Clear All
-              </Button>
+            {currentPreset && (
+              <Badge variant="outline" className="ml-2 text-xs border-blue-500 text-blue-600 dark:text-blue-400">
+                Preset: {currentPreset}
+              </Badge>
             )}
-          </div>
+          </CardTitle>
+          {hasActiveFilters && (
+            <Button variant="outline" size="sm" onClick={clearAllFilters} className="text-xs bg-transparent">
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Clear All
+            </Button>
+          )}
         </div>
 
         {/* Quick Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search countries"
-            value={internalSearchQuery}
-            onChange={(e) => setInternalSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-          {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {searchResults.map((countryCode: string) => (
-                <button
-                  key={countryCode}
-                  type="button"
-                  onClick={() => addCountryFromSearch(countryCode)}
-                  className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
-                >
-                  <Globe className="h-3 w-3" />
-                  {countryNames[countryCode] || countryCode} ({countryCode})
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search countries and regions"
+              value={internalSearchQuery}
+              onChange={(e) => setInternalSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                {searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onClick={() => result.type === 'country' ? addCountryFromSearch(result.id) : addRegionFromSearch(result.id)}
+                    className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
+                  >
+                    <Globe className={`h-3 w-3 ${result.type === 'region' ? 'text-blue-500' : ''}`} />
+                    {result.type === 'region' ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded dark:bg-blue-900/20 dark:text-blue-300">Region</span>
+                        {result.name}
+                      </span>
+                    ) : (
+                      <span>{result.name} ({result.id})</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </CardHeader>
 
@@ -342,7 +598,10 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
             </Button>
           </div>
           {savedPresets.length > 0 && (
-            <Select onValueChange={(value) => loadPreset(savedPresets.find((p) => p.name === value)!)}>
+            <Select value={currentPreset || ""} onValueChange={(value) => {
+              const preset = savedPresets.find((p) => p.name === value)
+              if (preset) loadPreset(preset)
+            }}>
               <SelectTrigger className="w-40 text-xs">
                 <SelectValue placeholder="Load preset..." />
               </SelectTrigger>
@@ -350,57 +609,34 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                 {savedPresets.map((preset) => (
                   <SelectItem key={preset.name} value={preset.name}>
                     <div className="flex items-center gap-2">
-                      <Bookmark className="h-3 w-3" />
+                      <BookmarkIcon className={`h-3 w-3 ${DEFAULT_PRESETS.find(p => p.name === preset.name) ? 'text-neutral-500' : 'text-green-500'}`} />
                       {preset.name}
+                      {DEFAULT_PRESETS.find(p => p.name === preset.name) && (
+                        <span className="text-xs text-neutral-600 dark:text-neutral-400">(default)</span>
+                      )}
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
+          <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="text-xs">
+            <Settings className="h-3 w-3 mr-1" />
+            {isExpanded ? "Less Options" : "More Options"}
+          </Button>
         </div>
 
         {/* Expanded Filters */}
         {isExpanded && (
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic">Basic</TabsTrigger>
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
-              <TabsTrigger value="analysis">Analysis</TabsTrigger>
-              <TabsTrigger value="display">Display</TabsTrigger>
+              <TabsTrigger value="display">Export</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="space-y-4">
-              {/* Region Selection */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Select Regions
-                </Label>
-                <Select 
-                  onValueChange={(value) => {
-                    if (value && !filters.selectedRegions.includes(value)) {
-                      updateFilters({ selectedRegions: [...filters.selectedRegions, value] })
-                    }
-                  }}
-                  disabled={!dataLoaded}
-                >
-                  <SelectTrigger className="text-xs">
-                    <SelectValue placeholder={dataLoaded ? "Add region..." : "Loading regions..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRegions
-                      .filter(region => !filters.selectedRegions.includes(region))
-                      .map((region) => (
-                        <SelectItem key={region} value={region}>
-                          {region}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Date Range */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium flex items-center gap-2">
@@ -439,30 +675,12 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                   </div>
                 </div>
 
-                {/* Flow Direction */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Flow Direction</Label>
-                  <Select
-                    value={filters.flowDirection}
-                    onValueChange={(value: any) => updateFilters({ flowDirection: value })}
-                  >
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Flows</SelectItem>
-                      <SelectItem value="inbound">Inbound Only</SelectItem>
-                      <SelectItem value="outbound">Outbound Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Time Aggregation */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Time Aggregation</Label>
                   <Select
                     value={filters.timeAggregation}
-                    onValueChange={(value: any) => updateFilters({ timeAggregation: value })}
+                    onValueChange={(value: "monthly" | "quarterly" | "yearly") => updateFilters({ timeAggregation: value })}
                   >
                     <SelectTrigger className="text-xs">
                       <SelectValue />
@@ -474,6 +692,24 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Flow Direction - Hidden until fully implemented in DB functions */}
+                {/* <div className="space-y-2">
+                  <Label className="text-sm font-medium">Flow Direction</Label>
+                  <Select
+                    value={filters.flowDirection}
+                    onValueChange={(value: "all" | "inbound" | "outbound") => updateFilters({ flowDirection: value })}
+                  >
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Flows</SelectItem>
+                      <SelectItem value="inbound">Inbound Only</SelectItem>
+                      <SelectItem value="outbound">Outbound Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div> */}
               </div>
 
               {/* Flow Size Range */}
@@ -483,34 +719,45 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Minimum</Label>
-                    <Slider
-                      value={[filters.minFlowSize]}
-                      onValueChange={([value]) => {
-                        // Ensure min doesn't exceed max
-                        const newMin = Math.min(value, filters.maxFlowSize - 100)
-                        updateFilters({ minFlowSize: newMin })
-                      }}
-                      min={0}
-                      max={Math.max(filters.maxFlowSize - 100, 0)}
-                      step={50}
-                      className="w-full"
-                    />
+                    <Label className="text-xs text-muted-foreground">Minimum Flow</Label>
+                    <Select
+                      value={filters.minFlowSize.toString()}
+                      onValueChange={(value) => updateFilters({ minFlowSize: parseInt(value) })}
+                    >
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0</SelectItem>
+                        <SelectItem value="1000">1,000</SelectItem>
+                        <SelectItem value="2500">2,500</SelectItem>
+                        <SelectItem value="5000">5,000</SelectItem>
+                        <SelectItem value="10000">10,000</SelectItem>
+                        <SelectItem value="25000">25,000</SelectItem>
+                        <SelectItem value="50000">50,000</SelectItem>
+                        <SelectItem value="100000">100,000</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Maximum</Label>
-                    <Slider
-                      value={[filters.maxFlowSize]}
-                      onValueChange={([value]) => {
-                        // Ensure max doesn't go below min
-                        const newMax = Math.max(value, filters.minFlowSize + 100)
-                        updateFilters({ maxFlowSize: newMax })
-                      }}
-                      min={Math.max(filters.minFlowSize + 100, 100)}
-                      max={10000}
-                      step={50}
-                      className="w-full"
-                    />
+                    <Label className="text-xs text-muted-foreground">Maximum Flow</Label>
+                    <Select
+                      value={filters.maxFlowSize.toString()}
+                      onValueChange={(value) => updateFilters({ maxFlowSize: parseInt(value) })}
+                    >
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10000">10,000</SelectItem>
+                        <SelectItem value="25000">25,000</SelectItem>
+                        <SelectItem value="50000">50,000</SelectItem>
+                        <SelectItem value="200000">200,000</SelectItem>
+                        <SelectItem value="500000">500,000</SelectItem>
+                        <SelectItem value="1000000">1,000,000</SelectItem>
+                        <SelectItem value="10000000">No limit</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -518,142 +765,101 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
 
             <TabsContent value="advanced" className="space-y-4">
               {/* Exclusion Filters */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Exclude Countries</Label>
-                <Select onValueChange={addExcludedCountry} disabled={!dataLoaded}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue placeholder={dataLoaded ? "Add country to exclude..." : "Loading countries..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {countries
-                      .filter((c) => !filters.excludedCountries.includes(c.code))
-                      .map((country) => (
-                        <SelectItem key={country.code} value={country.code}>
-                          {countryNames[country.code] || country.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Exclude Regions */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Exclude Regions</Label>
-                <Select 
-                  onValueChange={(value) => {
-                    if (value && !filters.excludedRegions.includes(value)) {
-                      updateFilters({ excludedRegions: [...filters.excludedRegions, value] })
-                    }
-                  }}
-                  disabled={!dataLoaded}
-                >
-                  <SelectTrigger className="text-xs">
-                    <SelectValue placeholder={dataLoaded ? "Add region to exclude..." : "Loading regions..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRegions
-                      .filter(region => !filters.excludedRegions.includes(region))
-                      .map((region) => (
-                        <SelectItem key={region} value={region}>
-                          {region}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Volatility Filter */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Volatility Range: {filters.volatilityFilter[0]}% - {filters.volatilityFilter[1]}%
-                </Label>
-                <Slider
-                  value={filters.volatilityFilter}
-                  onValueChange={(value) => updateFilters({ volatilityFilter: value as [number, number] })}
-                  max={100}
-                  step={5}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Correlation Threshold */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Correlation Threshold: {filters.correlationThreshold.toFixed(2)}
-                </Label>
-                <Slider
-                  value={[filters.correlationThreshold]}
-                  onValueChange={([value]) => updateFilters({ correlationThreshold: value })}
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  className="w-full"
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="analysis" className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Analysis Options */}
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="trends"
-                      checked={filters.showTrends}
-                      onCheckedChange={(checked) => updateFilters({ showTrends: checked })}
+                {/* Exclude Countries Search */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Exclude Countries</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search countries to exclude..."
+                      value={excludeCountrySearch}
+                      onChange={(e) => setExcludeCountrySearch(e.target.value)}
+                      className="pl-10 text-xs"
+                      disabled={!dataLoaded}
                     />
-                    <Label htmlFor="trends" className="text-sm">
-                      Show Trend Lines
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="anomalies"
-                      checked={filters.highlightAnomalies}
-                      onCheckedChange={(checked) => updateFilters({ highlightAnomalies: checked })}
-                    />
-                    <Label htmlFor="anomalies" className="text-sm">
-                      Highlight Anomalies
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="seasonality"
-                      checked={filters.seasonalityFilter}
-                      onCheckedChange={(checked) => updateFilters({ seasonalityFilter: checked })}
-                    />
-                    <Label htmlFor="seasonality" className="text-sm">
-                      Apply Seasonality Filter
-                    </Label>
+                    {excludeCountryResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {excludeCountryResults.map((countryCode: string) => (
+                          <button
+                            key={countryCode}
+                            type="button"
+                            onClick={() => addExcludedCountryFromSearch(countryCode)}
+                            className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
+                          >
+                            <Globe className="h-3 w-3 text-orange-500" />
+                            {countryNames[countryCode] || countryCode} ({countryCode})
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* View Type */}
+                {/* Exclude Regions Search */}
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Data View Type</Label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {(["absolute", "per-capita", "growth"] as const).map((type) => (
-                      <div key={type} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={type}
-                          checked={filters.viewType === type}
-                          onCheckedChange={() => updateFilters({ viewType: type })}
-                        />
-                        <Label htmlFor={type} className="text-sm">
-                          {type === "absolute"
-                            ? "Absolute Values"
-                            : type === "per-capita"
-                              ? "Per Capita"
-                              : "Growth Rates"}
-                        </Label>
+                  <Label className="text-sm font-medium">Exclude Regions</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search regions to exclude..."
+                      value={excludeRegionSearch}
+                      onChange={(e) => setExcludeRegionSearch(e.target.value)}
+                      className="pl-10 text-xs"
+                      disabled={!dataLoaded}
+                    />
+                    {excludeRegionResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {excludeRegionResults.map((region: string) => (
+                          <button
+                            key={region}
+                            type="button"
+                            onClick={() => addExcludedRegionFromSearch(region)}
+                            className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
+                          >
+                            <Globe className="h-3 w-3 text-orange-500" />
+                            {region}
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
               </div>
+
+              {/* Sliders in Same Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Volatility Filter */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Volatility Range: {filters.volatilityFilter[0]}% - {filters.volatilityFilter[1]}%
+                  </Label>
+                  <Slider
+                    value={filters.volatilityFilter}
+                    onValueChange={(value) => updateFilters({ volatilityFilter: value as [number, number] })}
+                    max={100}
+                    step={5}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Correlation Threshold */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Correlation Threshold: {filters.correlationThreshold.toFixed(2)}
+                  </Label>
+                  <Slider
+                    value={[filters.correlationThreshold]}
+                    onValueChange={([value]) => updateFilters({ correlationThreshold: value })}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    className="w-full"
+                  />
+                </div>
+              </div>
             </TabsContent>
+
 
             <TabsContent value="display" className="space-y-4">
               <div className="text-sm text-muted-foreground">

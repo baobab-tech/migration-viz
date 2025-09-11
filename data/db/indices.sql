@@ -63,19 +63,7 @@ ON flows_country_to_region_monthly(migration_month, country_from);
 CREATE INDEX idx_flows_country_region_volume 
 ON flows_country_to_region_monthly(num_migrants DESC, region_to);
 
--- flows_region_to_region_monthly
-CREATE INDEX idx_flows_region_region_time 
-ON flows_region_to_region_monthly(migration_month, region_from, region_to);
-
-CREATE INDEX idx_flows_region_region_volume 
-ON flows_region_to_region_monthly(num_migrants DESC);
-
--- flows_subregion_to_subregion_monthly
-CREATE INDEX idx_flows_subregion_time 
-ON flows_subregion_to_subregion_monthly(migration_month, subregion_from);
-
-CREATE INDEX idx_flows_subregion_volume 
-ON flows_subregion_to_subregion_monthly(num_migrants DESC);
+-- flows_regional_monthly (unified view - indexes already created in views.sql)
 
 -- =============================================================================
 -- TEMPORAL AGGREGATION VIEW INDEXES
@@ -101,13 +89,8 @@ ON flows_country_to_country_annual(year, num_migrants DESC);
 CREATE INDEX idx_flows_annual_country_totals 
 ON flows_country_to_country_annual(country_from, year, num_migrants);
 
--- flows_pandemic_comparison_country (basic index already exists in views_functions.sql)
--- Removed excessive partial indexes - basic country pair index is sufficient
-
--- flows_seasonal_patterns_country
-CREATE INDEX idx_flows_seasonal_countries 
-ON flows_seasonal_patterns_country(country_from, country_to);
--- Removed seasonal-specific indexes - single country pair index sufficient for small result sets
+-- flows_corridor_monthly_agg (indexes already created in views.sql)
+-- Removed pandemic and seasonal specific views - replaced with parameterized functions
 
 -- flows_rolling_averages_top100 (basic index already exists in views_functions.sql)
 -- Removed trend and partial indexes - basic time series index sufficient for top 100 corridors
@@ -211,12 +194,10 @@ BEGIN
     ANALYZE flows_country_to_country_monthly;
     ANALYZE flows_region_to_country_monthly;
     ANALYZE flows_country_to_region_monthly;
-    ANALYZE flows_region_to_region_monthly;
-    ANALYZE flows_subregion_to_subregion_monthly;
+    ANALYZE flows_regional_monthly;
     ANALYZE flows_country_to_country_quarterly;
     ANALYZE flows_country_to_country_annual;
-    ANALYZE flows_pandemic_comparison_country;
-    ANALYZE flows_seasonal_patterns_country;
+    ANALYZE flows_corridor_monthly_agg;
     ANALYZE flows_rolling_averages_top100;
     ANALYZE flows_net_annual_country;
     ANALYZE flows_corridor_rankings_annual;

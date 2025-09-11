@@ -1,36 +1,10 @@
 import { createClient } from '@/utils/supabase/client'
-import { Database, Tables } from '@/lib/db_generated_types'
+import type { Tables } from '@/lib/db_generated_types'
+import type { MigrationFlow, MigrationFilters } from '@/lib/types'
 
-// Type aliases for better readability
-type MigrationFlowMonthly = Tables<'flows_country_to_country_monthly'>
-type TopMigrationCorridors = Tables<'top_migration_corridors'>
+// Type aliases for better readability  
 type CountryMigrationSummary = Tables<'country_migration_summary'>
-type PandemicComparison = Tables<'flows_pandemic_comparison_country'>
-type SeasonalPatterns = Tables<'flows_seasonal_patterns_country'>
 type CorridorRankings = Tables<'flows_corridor_rankings_annual'>
-
-// Compatible interface with existing MigrationFlow
-export interface MigrationFlow {
-    countryA: string
-    countryB: string
-    number: number
-    month: string
-    region: string
-}
-
-// Extended filter interface matching the UI
-export interface MigrationFilters {
-    dateRange?: [string, string]
-    selectedRegions?: string[]
-    selectedCountries?: string[]
-    minFlowSize?: number
-    maxFlowSize?: number
-    excludedCountries?: string[]
-    excludedRegions?: string[]
-    flowDirection?: 'all' | 'inbound' | 'outbound'
-    period?: 'all' | 'pre_pandemic' | 'pandemic'
-    limit?: number
-}
 
 // Get Supabase client
 const supabase = createClient()
@@ -92,7 +66,7 @@ const countryCoordinates: Record<string, { lat: number; lng: number }> = {
 /**
  * Get M49 regions data for country/region mapping
  */
-export async function getM49Regions(): Promise<any[]> {
+export async function getM49Regions() {
     try {
         const { data, error } = await supabase
             .from('m49_regions')
@@ -197,9 +171,9 @@ export async function getMigrationFlows(filters: MigrationFilters = {}): Promise
         num_migrants,
         region_from,
         region_to,
-        period,
         year,
-        month
+        month,
+        period
       `)
 
         // Apply filters - ensure dates are in proper format
@@ -239,9 +213,6 @@ export async function getMigrationFlows(filters: MigrationFilters = {}): Promise
             query = query.lte('num_migrants', filters.maxFlowSize)
         }
 
-        if (filters.period && filters.period !== 'all') {
-            query = query.eq('period', filters.period)
-        }
 
         // Apply flow direction filter
         if (filters.flowDirection === 'inbound' && filters.selectedCountries && filters.selectedCountries.length > 0) {
@@ -279,10 +250,10 @@ export async function getMigrationFlows(filters: MigrationFilters = {}): Promise
         return data
             .filter(row => row.country_from && row.country_to && row.migration_month && row.num_migrants !== null)
             .map(row => ({
-                countryA: row.country_from!,
-                countryB: row.country_to!,
-                number: row.num_migrants!,
-                month: row.migration_month!,
+                countryA: row.country_from as string,
+                countryB: row.country_to as string,
+                number: row.num_migrants as number,
+                month: row.migration_month as string,
                 region: row.region_from || 'Unknown'
             }))
 
@@ -294,81 +265,44 @@ export async function getMigrationFlows(filters: MigrationFilters = {}): Promise
 }
 
 /**
- * Get aggregated monthly migration data
- * Can be used directly on filtered data or query the database
+ * Get aggregated migration data (monthly, quarterly, or yearly based on filters)
+ * @deprecated Use server-side getMonthlyTotalsServer instead for better performance
+ * This function is kept for backward compatibility but will use RPC function internally
  */
 export async function getMonthlyAggregatedFlows(filters: MigrationFilters = {}): Promise<{ month: string; total: number }[]> {
+    console.warn('getMonthlyAggregatedFlows is deprecated. Use getMonthlyTotalsServer for better performance.')
+    
     try {
-        let query = supabase
-            .from('flows_country_to_country_monthly')
-            .select('migration_month, num_migrants')
+        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
 
-        // Apply same filters as getMigrationFlows
-        if (filters.dateRange && filters.dateRange.length === 2) {
-            const startDate = normalizeDate(filters.dateRange[0])
-            const endDate = normalizeDate(filters.dateRange[1])
-            
-            query = query
-                .gte('migration_month', startDate)
-                .lte('migration_month', endDate)
-        }
-
-        if (filters.selectedRegions && filters.selectedRegions.length > 0) {
-            query = query.in('region_from', filters.selectedRegions)
-        }
-
-        if (filters.selectedCountries && filters.selectedCountries.length > 0) {
-            query = query.or(`country_from.in.(${filters.selectedCountries.join(',')}),country_to.in.(${filters.selectedCountries.join(',')})`)
-        }
-
-        if (filters.excludedCountries && filters.excludedCountries.length > 0) {
-            query = query
-                .not('country_from', 'in', `(${filters.excludedCountries.join(',')})`)
-                .not('country_to', 'in', `(${filters.excludedCountries.join(',')})`)
-        }
-
-        if (filters.excludedRegions && filters.excludedRegions.length > 0) {
-            query = query.not('region_from', 'in', `(${filters.excludedRegions.join(',')})`)
-        }
-
-        if (filters.minFlowSize !== undefined) {
-            query = query.gte('num_migrants', filters.minFlowSize)
-        }
-
-        if (filters.maxFlowSize !== undefined) {
-            query = query.lte('num_migrants', filters.maxFlowSize)
-        }
-
-        if (filters.period && filters.period !== 'all') {
-            query = query.eq('period', filters.period)
-        }
-
-        const { data, error } = await query
+        const { data, error } = await supabase.rpc('get_monthly_migration_totals', {
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : undefined,
+            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : undefined,
+            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : undefined,
+            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : undefined,
+            p_min_flow: filters.minFlowSize ?? 0,
+            p_max_flow: filters.maxFlowSize ?? undefined,
+            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all'),
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
+        } as any)
 
         if (error) {
-            console.error('Error fetching monthly aggregated flows:', error)
-            throw new Error(`Failed to fetch monthly flows: ${error.message}`)
+            console.error('Error calling get_monthly_migration_totals RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
         }
 
-        if (!data) {
-            return []
-        }
+        if (!data) return []
 
-        // Group by month and sum
-        const monthlyTotals: Record<string, number> = {}
-        data.forEach(row => {
-            if (row.migration_month && row.num_migrants !== null) {
-                monthlyTotals[row.migration_month] = (monthlyTotals[row.migration_month] || 0) + row.num_migrants
-            }
-        })
-
-        return Object.entries(monthlyTotals)
-            .map(([month, total]) => ({ month, total }))
-            .sort((a, b) => a.month.localeCompare(b.month))
-
+        return data.map((row: { month: string; total_migrants: number }) => ({
+            month: row.month,
+            total: Number(row.total_migrants)
+        }))
     } catch (error) {
         console.error('Error in getMonthlyAggregatedFlows:', error)
-
+        
         return []
     }
 }
@@ -379,16 +313,13 @@ export async function getMonthlyAggregatedFlows(filters: MigrationFilters = {}):
 export async function getTopCorridors(filters: MigrationFilters = {}, limit: number = 10): Promise<{ corridor: string; total: number; countryA: string; countryB: string }[]> {
     try {
         // Use the pre-computed view if no specific filters are applied
-        if (Object.keys(filters).length === 0 || (filters.period && Object.keys(filters).length === 1)) {
-            let query = supabase
+        if (Object.keys(filters).length === 0) {
+            const query = supabase
                 .from('top_migration_corridors')
                 .select('*')
                 .order('total_migrants', { ascending: false })
                 .limit(limit)
 
-            if (filters.period && filters.period !== 'all') {
-                query = query.eq('period', filters.period)
-            }
 
             const { data, error } = await query
 
@@ -450,9 +381,6 @@ export async function getTopCorridors(filters: MigrationFilters = {}, limit: num
             query = query.lte('num_migrants', filters.maxFlowSize)
         }
 
-        if (filters.period && filters.period !== 'all') {
-            query = query.eq('period', filters.period)
-        }
 
         const { data, error } = await query
 
@@ -482,7 +410,7 @@ export async function getTopCorridors(filters: MigrationFilters = {}, limit: num
         })
 
         return Object.entries(corridorTotals)
-            .map(([corridor, { total, countryA, countryB }]) => ({
+            .map(([, { total, countryA, countryB }]) => ({
                 corridor: `${countryA} → ${countryB}`,
                 total,
                 countryA,
@@ -498,71 +426,7 @@ export async function getTopCorridors(filters: MigrationFilters = {}, limit: num
     }
 }
 
-/**
- * Get pandemic comparison data for specific corridors
- */
-export async function getPandemicComparison(countryFrom?: string, countryTo?: string): Promise<PandemicComparison[]> {
-    try {
-        let query = supabase
-            .from('flows_pandemic_comparison_country')
-            .select('*')
 
-        if (countryFrom) {
-            query = query.eq('country_from', countryFrom)
-        }
-
-        if (countryTo) {
-            query = query.eq('country_to', countryTo)
-        }
-
-        const { data, error } = await query
-
-        if (error) {
-            console.error('Error fetching pandemic comparison:', error)
-            throw new Error(`Failed to fetch pandemic comparison: ${error.message}`)
-        }
-
-        return data || []
-
-    } catch (error) {
-        console.error('Error in getPandemicComparison:', error)
-
-        return []
-    }
-}
-
-/**
- * Get seasonal patterns for migration flows
- */
-export async function getSeasonalPatterns(countryFrom?: string, countryTo?: string): Promise<SeasonalPatterns[]> {
-    try {
-        let query = supabase
-            .from('flows_seasonal_patterns_country')
-            .select('*')
-
-        if (countryFrom) {
-            query = query.eq('country_from', countryFrom)
-        }
-
-        if (countryTo) {
-            query = query.eq('country_to', countryTo)
-        }
-
-        const { data, error } = await query
-
-        if (error) {
-            console.error('Error fetching seasonal patterns:', error)
-            throw new Error(`Failed to fetch seasonal patterns: ${error.message}`)
-        }
-
-        return data || []
-
-    } catch (error) {
-        console.error('Error in getSeasonalPatterns:', error)
-
-        return []
-    }
-}
 
 /**
  * Get country migration summary statistics
@@ -666,12 +530,12 @@ export function getTopCorridorsFromData(
 
             return {
                 corridor: `${countryA} → ${countryB}`, // Note: will need country name resolution
-                total,
+                total: Number(total),
                 countryA,
                 countryB
             }
         })
-        .sort((a, b) => b.total - a.total)
+        .sort((a, b) => Number(b.total) - Number(a.total))
         .slice(0, limit)
 }
 
@@ -680,218 +544,5 @@ export async function generateMigrationData(limit: number = 50000): Promise<Migr
     return await getMigrationFlows({ limit })
 }
 
-/**
- * Get country name mappings for labels (preloaded unique list)
- */
-export async function getCountryNameMappings(): Promise<Record<string, string>> {
-    try {
-        const { data, error } = await supabase
-            .from('m49_regions')
-            .select('iso2_code, country_name')
-            .not('iso2_code', 'is', null)
-            .order('iso2_code')
-
-        if (error) {
-            console.error('Error fetching country name mappings:', error)
-            throw new Error(`Failed to fetch country names: ${error.message}`)
-        }
-
-        if (!data) return {}
-
-        // Convert array to object for fast lookups
-        return data.reduce((acc: Record<string, string>, row) => {
-            if (row.iso2_code && row.country_name) {
-                acc[row.iso2_code] = row.country_name
-            }
-
-            return acc
-        }, {})
-
-    } catch (error) {
-        console.error('Error in getCountryNameMappings:', error)
-        
-        return {}
-    }
-}
-
-/**
- * EFFICIENT RPC-BASED FUNCTIONS - Use these instead of getMigrationFlows for dashboards!
- */
-
-/**
- * Get monthly totals using efficient RPC function - replaces getMigrationFlows + client-side aggregation
- */
-export async function getMonthlyTotalsRPC(filters: MigrationFilters = {}): Promise<{ month: string; total: number }[]> {
-    try {
-        // Convert filters to RPC parameters
-        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
-        
-        const { data, error } = await supabase.rpc('get_monthly_migration_totals', {
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
-            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
-            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
-            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
-            p_min_flow: filters.minFlowSize ?? 0,
-            p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
-        })
-
-        if (error) {
-            console.error('Error calling get_monthly_migration_totals RPC:', error)
-            throw new Error(`RPC call failed: ${error.message}`)
-        }
-
-        if (!data) return []
-
-        return data.map((row: any) => ({
-            month: row.month,
-            total: Number(row.total_migrants)
-        }))
-
-    } catch (error) {
-        console.error('Error in getMonthlyTotalsRPC:', error)
-
-        return []
-    }
-}
-
-/**
- * Get dashboard summary statistics using efficient RPC function
- */
-export async function getDashboardSummaryRPC(filters: MigrationFilters = {}): Promise<{
-    totalFlows: number
-    uniqueCorridors: number
-    activeMonths: number
-    avgMonthlyFlow: number
-}> {
-    try {
-        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
-        
-        const { data, error } = await supabase.rpc('get_dashboard_summary', {
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
-            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
-            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
-            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
-            p_min_flow: filters.minFlowSize ?? 0,
-            p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
-        })
-
-        if (error) {
-            console.error('Error calling get_dashboard_summary RPC:', error)
-            throw new Error(`RPC call failed: ${error.message}`)
-        }
-
-        if (!data || data.length === 0) {
-            return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgMonthlyFlow: 0 }
-        }
-
-        const summary = data[0]
-        
-        return {
-            totalFlows: Number(summary.total_flows) || 0,
-            uniqueCorridors: Number(summary.unique_corridors) || 0,
-            activeMonths: Number(summary.active_months) || 0,
-            avgMonthlyFlow: Number(summary.avg_monthly_flow) || 0
-        }
-
-    } catch (error) {
-        console.error('Error in getDashboardSummaryRPC:', error)
-
-        return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgMonthlyFlow: 0 }
-    }
-}
-
-/**
- * Get corridor time series data using efficient RPC function
- */
-export async function getCorridorTimeSeriesRPC(
-    corridors: string[], 
-    filters: MigrationFilters = {}
-): Promise<{ corridor: string; countryA: string; countryB: string; month: string; migrants: number }[]> {
-    try {
-        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
-        
-        const { data, error } = await supabase.rpc('get_corridor_time_series', {
-            p_corridors: corridors.length > 0 ? corridors : null,
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
-            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
-            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
-            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
-            p_min_flow: filters.minFlowSize ?? 0,
-            p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
-        })
-
-        if (error) {
-            console.error('Error calling get_corridor_time_series RPC:', error)
-            throw new Error(`RPC call failed: ${error.message}`)
-        }
-
-        if (!data) return []
-
-        return data.map((row: any) => ({
-            corridor: row.corridor,
-            countryA: row.country_from,
-            countryB: row.country_to,
-            month: row.month,
-            migrants: Number(row.migrants)
-        }))
-
-    } catch (error) {
-        console.error('Error in getCorridorTimeSeriesRPC:', error)
-
-        return []
-    }
-}
-
-/**
- * Get top corridors using efficient RPC function - replaces getTopCorridors aggregation
- */
-export async function getTopCorridorsRPC(filters: MigrationFilters = {}, limit: number = 10): Promise<{ corridor: string; total: number; countryA: string; countryB: string }[]> {
-    try {
-        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
-        
-        const { data, error } = await supabase.rpc('get_filtered_top_corridors', {
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
-            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
-            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
-            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
-            p_min_flow: filters.minFlowSize ?? 0,
-            p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all'),
-            p_limit: limit
-        })
-
-        if (error) {
-            console.error('Error calling get_filtered_top_corridors RPC:', error)
-            throw new Error(`RPC call failed: ${error.message}`)
-        }
-
-        if (!data) return []
-
-        return data.map((row: any) => ({
-            corridor: row.corridor,
-            total: Number(row.total_migrants),
-            countryA: row.country_from,
-            countryB: row.country_to
-        }))
-
-    } catch (error) {
-        console.error('Error in getTopCorridorsRPC:', error)
-
-        return []
-    }
-}
+// All RPC functions moved to server-queries.ts for React 19 best practices
+// Client-side components should use Server Actions or Server Components for data fetching

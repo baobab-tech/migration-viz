@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { useCallback, useState, useEffect } from "react"
 import { AdvancedFilters, type ExtendedFilterState } from "@/components/advanced-filters"
 import { loadCountriesData } from "@/lib/queries"
-import type { MigrationFilters } from "@/lib/queries"
+import type { MigrationFilters } from "@/lib/types"
 
 interface MigrationFiltersProps {
   initialFilters: MigrationFilters
@@ -18,11 +18,11 @@ function migrationFiltersToExtended(filters: MigrationFilters): ExtendedFilterSt
     selectedRegions: filters.selectedRegions || [],
     selectedCountries: filters.selectedCountries || [],
     minFlowSize: filters.minFlowSize || 0,
-    maxFlowSize: filters.maxFlowSize || 10000,
+    maxFlowSize: filters.maxFlowSize || 10000000,
     excludedCountries: filters.excludedCountries || [],
     excludedRegions: filters.excludedRegions || [],
     flowDirection: filters.flowDirection || "all",
-    timeAggregation: "monthly", // Default value for display filters
+    timeAggregation: filters.timeAggregation || "monthly",
     searchQuery: "",
     viewType: "absolute",
     showTrends: false,
@@ -43,10 +43,11 @@ function filtersToSearchParams(filters: ExtendedFilterState): URLSearchParams {
   if (filters.selectedRegions.length) params.set('regions', filters.selectedRegions.join(','))
   if (filters.selectedCountries.length) params.set('countries', filters.selectedCountries.join(','))
   if (filters.minFlowSize > 0) params.set('min_flow', filters.minFlowSize.toString())
-  if (filters.maxFlowSize < 10000) params.set('max_flow', filters.maxFlowSize.toString())
+  if (filters.maxFlowSize < 10000000) params.set('max_flow', filters.maxFlowSize.toString())
   if (filters.excludedCountries.length) params.set('excluded_countries', filters.excludedCountries.join(','))
   if (filters.excludedRegions.length) params.set('excluded_regions', filters.excludedRegions.join(','))
   if (filters.flowDirection !== 'all') params.set('flow_direction', filters.flowDirection)
+  if (filters.timeAggregation !== 'monthly') params.set('time_aggregation', filters.timeAggregation)
   
   return params
 }
@@ -63,51 +64,7 @@ export function MigrationFiltersClient({ initialFilters, savedPresets = [] }: Mi
     migrationFiltersToExtended(initialFilters)
   )
   
-  const [presets, setPresets] = useState([
-    {
-      name: "Europe Focus",
-      filters: {
-        dateRange: ["2019-01", "2022-12"],
-        selectedRegions: ["Europe"],
-        selectedCountries: [],
-        minFlowSize: 500,
-        maxFlowSize: 10000,
-        excludedCountries: [],
-        excludedRegions: [],
-        flowDirection: "all",
-        timeAggregation: "monthly",
-        searchQuery: "",
-        viewType: "absolute",
-        showTrends: false,
-        highlightAnomalies: false,
-        correlationThreshold: 0.5,
-        volatilityFilter: [0, 100],
-        seasonalityFilter: false,
-      } as ExtendedFilterState,
-    },
-    {
-      name: "Pandemic Period",
-      filters: {
-        dateRange: ["2020-01", "2021-12"],
-        selectedRegions: [],
-        selectedCountries: [],
-        minFlowSize: 0,
-        maxFlowSize: 10000,
-        excludedCountries: [],
-        excludedRegions: [],
-        flowDirection: "all",
-        timeAggregation: "monthly",
-        searchQuery: "",
-        viewType: "absolute",
-        showTrends: false,
-        highlightAnomalies: true,
-        correlationThreshold: 0.5,
-        volatilityFilter: [0, 100],
-        seasonalityFilter: false,
-      } as ExtendedFilterState,
-    },
-    ...savedPresets,
-  ])
+  const [customPresets, setCustomPresets] = useState(savedPresets)
 
   const handleFiltersChange = useCallback((newFilters: ExtendedFilterState) => {
     setCurrentFilters(newFilters)
@@ -121,7 +78,7 @@ export function MigrationFiltersClient({ initialFilters, savedPresets = [] }: Mi
   }, [router])
 
   const handleSavePreset = useCallback((name: string, presetFilters: ExtendedFilterState) => {
-    setPresets(prev => [...prev, { name, filters: presetFilters }])
+    setCustomPresets(prev => [...prev, { name, filters: presetFilters }])
   }, [])
 
   return (
@@ -129,7 +86,7 @@ export function MigrationFiltersClient({ initialFilters, savedPresets = [] }: Mi
       filters={currentFilters}
       onFiltersChange={handleFiltersChange}
       onSavePreset={handleSavePreset}
-      savedPresets={presets}
+      savedPresets={customPresets.length > 0 ? customPresets : undefined}
     />
   )
 }

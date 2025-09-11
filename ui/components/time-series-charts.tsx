@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Fuse from "fuse.js"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Area,
-  ReferenceLine,
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
@@ -25,70 +24,137 @@ import {
   ComposedChart,
   Bar,
 } from "recharts"
-import { type MigrationFlow, getCorridorTimeSeriesRPC, type MigrationFilters, getCountryNameMappings } from "@/lib/queries"
+import type { MigrationFilters } from "@/lib/types"
 import { TrendingUp, Calendar, BarChart3, RadarIcon, Search } from "lucide-react"
 
-interface TimeSeriesChartsProps {
-  data: MigrationFlow[]
-  filters?: MigrationFilters
+// Utility function to split corridor strings (handles both "EG-SA" and "EG → SA" formats)
+const splitCorridorString = (corridorString: string): [string, string] => {
+  return corridorString.includes(' → ') 
+    ? corridorString.split(' → ') as [string, string]
+    : corridorString.split('-') as [string, string]
 }
 
-export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) {
+interface TimeSeriesChartsProps {
+  filters?: MigrationFilters
+  initialCountryNames: Record<string, string>
+  initialQuarterlyData: { month: string; total: number; season: string; quarter: number }[]
+  initialSeasonalPatternsData: { month: string; average: number; max: number; min: number }[]
+  initialAvailableCorridors: { value: string; label: string; total: number }[]
+}
+
+export function TimeSeriesCharts({ 
+  filters = {},
+  initialCountryNames,
+  initialQuarterlyData,
+  initialSeasonalPatternsData,
+  initialAvailableCorridors
+}: TimeSeriesChartsProps) {
   const [selectedCorridors, setSelectedCorridors] = useState<string[]>([])
   const [comparisonMode, setComparisonMode] = useState<"absolute" | "normalized" | "growth">("absolute")
   const [corridorData, setCorridorData] = useState<{ corridor: string; countryA: string; countryB: string; month: string; migrants: number }[]>([])
-  const [loading, setLoading] = useState(false)
-  const [countryNames, setCountryNames] = useState<Record<string, string>>({})
+  const [countryNames] = useState<Record<string, string>>(initialCountryNames)
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
-
-  // Load country names on mount
-  useEffect(() => {
-    const loadCountryNames = async () => {
-      try {
-        const names = await getCountryNameMappings()
-        setCountryNames(names)
-      } catch (error) {
-        console.error('Error loading country names:', error)
-      }
-    }
-    loadCountryNames()
-  }, [])
+  const [quarterlyData] = useState<{ month: string; total: number; season: string; quarter: number }[]>(initialQuarterlyData)
+  const [seasonalPatternsData] = useState<{ month: string; average: number; max: number; min: number }[]>(initialSeasonalPatternsData)
+  const [availableCorridorsData, setAvailableCorridorsData] = useState<{ value: string; label: string; total: number }[]>(initialAvailableCorridors)
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery)
-    }, 150)
+    }, 200) // Reduced debounce time for more responsive search since it's just client-side filtering now
 
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Fetch data when corridors or filters change
+  // Update available corridors when filters change
   useEffect(() => {
-    const fetchCorridorData = async () => {
-      if (selectedCorridors.length === 0) return
-      
-      setLoading(true)
+    let isCancelled = false
+    
+    const loadAvailableCorridors = async () => {
       try {
-        const data = await getCorridorTimeSeriesRPC(selectedCorridors, filters)
-        setCorridorData(data)
+        const { fetchCorridorOptionsAction } = await import('@/lib/actions')
+        const topCorridors = await fetchCorridorOptionsAction(filters, 200)
+        
+        if (!isCancelled) {
+          const corridors = topCorridors.map(corridor => ({
+            value: `${corridor.countryA}-${corridor.countryB}`,
+            label: corridor.displayName || `${countryNames[corridor.countryA] || corridor.countryA} → ${countryNames[corridor.countryB] || corridor.countryB}`,
+            total: corridor.total
+          }))
+          
+          setAvailableCorridorsData(corridors)
+          // Clear selected corridors when filters change to allow auto-selection of new top corridors
+          setSelectedCorridors([])
+        }
       } catch (error) {
-        console.error('Error fetching corridor data:', error)
-        setCorridorData([])
-      } finally {
-        setLoading(false)
+        if (!isCancelled) {
+          console.error('Error fetching available corridors:', error)
+        }
       }
     }
 
-    fetchCorridorData()
+    // Only reload if filters have meaningful values (avoid loading on empty filters object)
+    const hasSignificantFilters = Boolean(
+      filters.selectedCountries?.length ||
+      filters.selectedRegions?.length ||
+      filters.dateRange?.length ||
+      filters.excludedCountries?.length ||
+      filters.excludedRegions?.length ||
+      filters.minFlowSize ||
+      filters.maxFlowSize
+    )
+    
+    if (hasSignificantFilters) {
+      loadAvailableCorridors()
+    }
+    
+    return () => {
+      isCancelled = true
+    }
+  }, [filters, countryNames])
+
+  // Fetch corridor data when corridors change using Server Action
+  useEffect(() => {
+    if (selectedCorridors.length === 0) {
+      setCorridorData([])
+
+      return
+    }
+    
+    let isCancelled = false
+    
+    const loadCorridorData = async () => {
+      try {
+        const { fetchCorridorTimeSeriesAction } = await import('@/lib/actions')
+        const data = await fetchCorridorTimeSeriesAction(selectedCorridors, filters)
+        if (!isCancelled) {
+          setCorridorData(data)
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Error fetching corridor data:', error)
+          setCorridorData([])
+        }
+      }
+    }
+
+    loadCorridorData()
+    
+    return () => {
+      isCancelled = true
+    }
   }, [selectedCorridors, filters])
 
-  // Process server data for the chart
+  // Quarterly and seasonal data now passed as props from Server Component
+
+  // Available corridors now passed as props from Server Component
+
+  // Process server data for the chart (React 19 compiler will auto-optimize)
   const corridorTimeSeriesData = useMemo(() => {
     if (corridorData.length === 0) return []
 
-    // Get all unique months from server data
     const allMonths = Array.from(new Set(corridorData.map(d => d.month))).sort()
     
     // Group data by month
@@ -97,22 +163,23 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
       if (!monthlyData.has(item.month)) {
         monthlyData.set(item.month, new Map())
       }
-      monthlyData.get(item.month)!.set(item.corridor, item.migrants)
+      monthlyData.get(item.month)?.set(item.corridor, item.migrants)
     })
 
-    // Create time series data
-    const timeSeriesData = allMonths.map((month) => {
-      const dataPoint: any = { month }
+    return allMonths.map((month) => {
+      const dataPoint: Record<string, number | string> = { month }
 
       selectedCorridors.forEach((corridor) => {
-        const value = monthlyData.get(month)?.get(corridor) || 0
+        // Convert corridor format for data lookup: "MX → US" -> "MX-US"
+        const dataKey = corridor.includes(' → ') ? corridor.replace(' → ', '-') : corridor
+        const value = monthlyData.get(month)?.get(dataKey) || 0
 
         if (comparisonMode === "absolute") {
           dataPoint[corridor] = value
         } else if (comparisonMode === "normalized") {
           // Get max value for this corridor across all months
           const corridorValues = corridorData
-            .filter(d => d.corridor === corridor)
+            .filter(d => d.corridor === dataKey)
             .map(d => d.migrants)
           const maxValue = Math.max(...corridorValues, 0)
           dataPoint[corridor] = maxValue > 0 ? (value / maxValue) * 100 : 0
@@ -121,7 +188,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
           const currentIndex = allMonths.indexOf(month)
           if (currentIndex > 0) {
             const prevMonth = allMonths[currentIndex - 1]
-            const prevValue = monthlyData.get(prevMonth)?.get(corridor) || 0
+            const prevValue = monthlyData.get(prevMonth)?.get(dataKey) || 0
             dataPoint[corridor] = prevValue > 0 ? ((value - prevValue) / prevValue) * 100 : 0
           } else {
             dataPoint[corridor] = 0
@@ -131,89 +198,23 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
 
       return dataPoint
     })
-
-    return timeSeriesData
   }, [corridorData, selectedCorridors, comparisonMode])
 
-  // Pandemic impact analysis
-  const pandemicImpactData = useMemo(() => {
-    const monthlyTotals = new Map<string, number>()
-    data.forEach((flow) => {
-      monthlyTotals.set(flow.month, (monthlyTotals.get(flow.month) || 0) + flow.number)
-    })
-
-    const allMonths = Array.from(monthlyTotals.keys()).sort()
-
-    return allMonths.map((month) => {
-      const isPandemic = month >= "2020-03" && month <= "2021-12"
-      const isPrePandemic = month < "2020-03"
-      const isPostPandemic = month > "2021-12"
-
-      return {
-        month,
-        total: monthlyTotals.get(month) || 0,
-        period: isPandemic ? "Pandemic" : isPrePandemic ? "Pre-Pandemic" : "Post-Pandemic",
-        isPandemic,
-        isPrePandemic,
-        isPostPandemic,
-      }
-    })
-  }, [data])
-
-  // Seasonal patterns analysis
-  const seasonalData = useMemo(() => {
-    const monthlyPatterns = new Map<string, number[]>()
-
-    // Group by month (01, 02, etc.) across all years
-    data.forEach((flow) => {
-      const month = flow.month.slice(-2) // Get MM part
-      if (!monthlyPatterns.has(month)) {
-        monthlyPatterns.set(month, [])
-      }
-      monthlyPatterns.get(month)!.push(flow.number)
-    })
-
-    // Calculate averages for each month
-    const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-    return months.map((month, index) => {
-      const values = monthlyPatterns.get(month) || []
-      const average = values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0
-      const max = values.length > 0 ? Math.max(...values) : 0
-      const min = values.length > 0 ? Math.min(...values) : 0
-
-      return {
-        month: monthNames[index],
-        average: Math.round(average),
-        max,
-        min,
-        volatility:
-          values.length > 1
-            ? Math.sqrt(values.reduce((sum, val) => sum + Math.pow(val - average, 2), 0) / values.length)
-            : 0,
-      }
-    })
-  }, [data])
+  // Quarterly data now fetched via RPC (see useEffect above)
 
   // Initialize Fuse.js for corridor search
   const corridorFuse = useMemo(() => {
-    if (Object.keys(countryNames).length === 0) return null
-    
-    const corridors = new Set<string>()
-    data.forEach((flow) => {
-      corridors.add(`${flow.countryA}-${flow.countryB}`)
-    })
+    if (availableCorridorsData.length === 0) return null
 
-    const corridorData = Array.from(corridors).map((corridor) => {
-      const [from, to] = corridor.split("-")
-
+    const corridorData = availableCorridorsData.map((corridor) => {
+      const [from, to] = splitCorridorString(corridor.value)
+      
       return {
-        value: corridor,
-        label: `${countryNames[from] || from} → ${countryNames[to] || to}`,
+        value: corridor.value,
+        label: corridor.label,
         from: countryNames[from] || from,
         to: countryNames[to] || to,
-        total: data.filter((d) => `${d.countryA}-${d.countryB}` === corridor).reduce((sum, d) => sum + d.number, 0),
+        total: corridor.total,
       }
     })
 
@@ -226,7 +227,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
       threshold: 0.3,
       includeScore: true
     })
-  }, [data, countryNames])
+  }, [availableCorridorsData, countryNames])
 
   // Get filtered search results
   const searchResults = useMemo(() => {
@@ -237,33 +238,13 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
       .map(result => result.item)
   }, [corridorFuse, debouncedSearchQuery])
 
-  // Get available corridors for selection
-  const availableCorridors = useMemo(() => {
-    const corridors = new Set<string>()
-    data.forEach((flow) => {
-      corridors.add(`${flow.countryA}-${flow.countryB}`)
-    })
-
-    return Array.from(corridors)
-      .map((corridor) => {
-        const [from, to] = corridor.split("-")
-        
-        return {
-          value: corridor,
-          label: `${countryNames[from] || from} → ${countryNames[to] || to}`,
-          total: data.filter((d) => `${d.countryA}-${d.countryB}` === corridor).reduce((sum, d) => sum + d.number, 0),
-        }
-      })
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 20) // Top 20 corridors
-  }, [data, countryNames])
-
   // Auto-select top 3 corridors if none are selected
-  React.useEffect(() => {
-    if (selectedCorridors.length === 0 && availableCorridors.length > 0) {
-      setSelectedCorridors(availableCorridors.slice(0, 3).map(c => c.value))
+  useEffect(() => {
+    if (selectedCorridors.length === 0 && availableCorridorsData.length > 0) {
+      const topThree = availableCorridorsData.slice(0, 3).map(c => c.value)
+      setSelectedCorridors(topThree)
     }
-  }, [availableCorridors, selectedCorridors.length])
+  }, [availableCorridorsData, selectedCorridors.length])
 
   const addCorridor = (corridor: string) => {
     if (!selectedCorridors.includes(corridor) && selectedCorridors.length < 8) {
@@ -299,9 +280,9 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
             <TrendingUp className="h-4 w-4" />
             Multi-Corridor
           </TabsTrigger>
-          <TabsTrigger value="pandemic" className="flex items-center gap-2">
+          <TabsTrigger value="quarterly" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Pandemic Impact
+            Quarterly Patterns
           </TabsTrigger>
           <TabsTrigger value="seasonal" className="flex items-center gap-2">
             <RadarIcon className="h-4 w-4" />
@@ -374,7 +355,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
               {/* Selected Corridors */}
               <div className="flex flex-wrap gap-2">
                 {selectedCorridors.map((corridor, index) => {
-                  const [from, to] = corridor.split("-")
+                  const [from, to] = splitCorridorString(corridor)
 
                   return (
                     <Badge
@@ -428,7 +409,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                         backdropFilter: "blur(8px)",
                       }}
                       formatter={(value: number, name: string) => {
-                        const [from, to] = name.split("-")
+                        const [from, to] = splitCorridorString(name)
                         const label = `${countryNames[from] || from} → ${countryNames[to] || to}`
                         const formattedValue =
                           comparisonMode === "growth"
@@ -458,24 +439,37 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
           </Card>
         </TabsContent>
 
-        <TabsContent value="pandemic" className="space-y-4">
+        <TabsContent value="quarterly" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Pandemic Impact Analysis</CardTitle>
+              <CardTitle>
+                {filters.timeAggregation === 'yearly' ? 'Annual Migration Patterns' :
+                 filters.timeAggregation === 'quarterly' ? 'Quarterly Migration Patterns' :
+                 'Monthly Migration Patterns'}
+              </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Migration flow changes before, during, and after the COVID-19 pandemic
+                {filters.timeAggregation === 'yearly' 
+                  ? 'Migration flow patterns aggregated by years'
+                  : filters.timeAggregation === 'quarterly' 
+                    ? 'Migration flow patterns aggregated by quarters' 
+                    : 'Monthly migration flows with seasonal groupings'
+                }
               </p>
             </CardHeader>
             <CardContent>
               <div className="h-96">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={pandemicImpactData}>
+                  <ComposedChart data={quarterlyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis
                       dataKey="month"
                       stroke="hsl(var(--muted-foreground))"
                       fontSize={12}
-                      tickFormatter={(value) => value.slice(0, 7)}
+                      tickFormatter={(value) => 
+                        filters.timeAggregation === 'quarterly' 
+                          ? `${value.slice(0, 4)} ${value.slice(5, 7) <= '03' ? 'Q1' : value.slice(5, 7) <= '06' ? 'Q2' : value.slice(5, 7) <= '09' ? 'Q3' : 'Q4'}`
+                          : value.slice(0, 7)
+                      }
                     />
                     <YAxis
                       stroke="hsl(var(--muted-foreground))"
@@ -491,8 +485,6 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                       }}
                       formatter={(value: number) => [value.toLocaleString(), "Total Flows"]}
                     />
-                    <ReferenceLine x="2020-03" stroke="hsl(var(--destructive))" strokeDasharray="5 5" />
-                    <ReferenceLine x="2022-01" stroke="hsl(var(--chart-1))" strokeDasharray="5 5" />
                     <Area
                       type="monotone"
                       dataKey="total"
@@ -512,20 +504,19 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                 </ResponsiveContainer>
               </div>
 
-              {/* Pandemic Statistics */}
-              <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/50">
-                {["Pre-Pandemic", "Pandemic", "Post-Pandemic"].map((period, index) => {
-                  const periodData = pandemicImpactData.filter((d) => d.period === period)
+              {/* Quarterly Statistics */}
+              <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-border/50">
+                {["Q1", "Q2", "Q3", "Q4"].map((quarter) => {
+                  const quarterData = quarterlyData.filter((d) => d.season === quarter)
                   const avgFlow =
-                    periodData.length > 0 ? periodData.reduce((sum, d) => sum + d.total, 0) / periodData.length : 0
-                  const colors = ["hsl(var(--chart-1))", "hsl(var(--destructive))", "hsl(var(--chart-2))"]
+                    quarterData.length > 0 ? quarterData.reduce((sum, d) => sum + d.total, 0) / quarterData.length : 0
 
                   return (
-                    <div key={period} className="text-center">
-                      <div className="text-2xl font-bold" style={{ color: colors[index] }}>
+                    <div key={quarter} className="text-center">
+                      <div className="text-2xl font-bold">
                         {Math.round(avgFlow).toLocaleString()}
                       </div>
-                      <div className="text-xs text-muted-foreground">{period} Avg</div>
+                      <div className="text-xs text-muted-foreground">{quarter} Avg</div>
                     </div>
                   )
                 })}
@@ -539,12 +530,19 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
             <Card>
               <CardHeader>
                 <CardTitle>Seasonal Migration Patterns</CardTitle>
-                <p className="text-sm text-muted-foreground">Average monthly migration flows across all years</p>
+                <p className="text-sm text-muted-foreground">
+                  {filters.timeAggregation === 'yearly' 
+                    ? 'Seasonal patterns showing annual averages across years'
+                    : filters.timeAggregation === 'quarterly' 
+                      ? 'Seasonal patterns showing quarterly averages across years' 
+                      : 'Seasonal patterns showing monthly averages across years'
+                  }
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={seasonalData}>
+                    <RadarChart data={seasonalPatternsData}>
                       <PolarGrid stroke="hsl(var(--border))" />
                       <PolarAngleAxis dataKey="month" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
                       <PolarRadiusAxis
@@ -577,13 +575,21 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
 
             <Card>
               <CardHeader>
-                <CardTitle>Monthly Flow Distribution</CardTitle>
-                <p className="text-sm text-muted-foreground">Min, average, and max flows by month</p>
+                <CardTitle>
+                  {filters.timeAggregation === 'yearly' ? 'Annual Flow Distribution' :
+                   filters.timeAggregation === 'quarterly' ? 'Quarterly Flow Distribution' :
+                   'Monthly Flow Distribution'}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {filters.timeAggregation === 'yearly' ? 'Min, average, and max flows by year' :
+                   filters.timeAggregation === 'quarterly' ? 'Min, average, and max flows by quarter' :
+                   'Min, average, and max flows by month'}
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={seasonalData}>
+                    <ComposedChart data={seasonalPatternsData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                       <YAxis
@@ -615,13 +621,15 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
             <CardHeader>
               <CardTitle>Migration Flow Volatility</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Monthly volatility patterns showing flow stability and variability
+                {filters.timeAggregation === 'yearly' ? 'Annual volatility patterns' :
+                 filters.timeAggregation === 'quarterly' ? 'Quarterly volatility patterns' :
+                 'Monthly volatility patterns'} showing flow stability and variability
               </p>
             </CardHeader>
             <CardContent>
               <div className="h-96">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={seasonalData}>
+                  <ComposedChart data={seasonalPatternsData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <YAxis

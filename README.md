@@ -31,6 +31,7 @@ The repository is organized into two main components:
 - **Python Scripts**: Collection of scripts for data transformations, aggregations, and calculations
 - **Data Pipeline**: Initial data processing and preparation for visualization
 - **Analytics**: Statistical analysis and pattern discovery tools
+- **Database Layer**: [Optimized PostgreSQL functions and views](data/db/README.md) for high-performance UI queries
 
 ### 🎨 Visualization Interface
 - **Interactive Dashboard**: Full-featured interface showcasing various visualization experiments

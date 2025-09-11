@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
-import type { MigrationFilters } from '@/lib/queries'
+import type { MigrationFilters } from '@/lib/types'
 
 // Cache for country names to avoid repeated DB calls
 let countryNameCache: Map<string, string> | null = null
@@ -117,7 +117,7 @@ export async function getM49RegionsServer(): Promise<Array<{
 }
 
 /**
- * Server-side function to get monthly totals using efficient RPC function
+ * Server-side function to get totals using efficient RPC function (supports monthly, quarterly, yearly)
  */
 export async function getMonthlyTotalsServer(filters: MigrationFilters = {}): Promise<{ month: string; total: number }[]> {
     try {
@@ -134,7 +134,8 @@ export async function getMonthlyTotalsServer(filters: MigrationFilters = {}): Pr
             p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
             p_min_flow: filters.minFlowSize ?? 0,
             p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
+            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all'),
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
         })
 
         if (error) {
@@ -237,7 +238,7 @@ export async function getTopCorridorsServer(filters: MigrationFilters = {}, limi
         // Get country name mapping for display names
         const mapping = await getCountryNameMapping()
         
-        return data.map((row: { corridor: string; total_migrants: number; country_from: string; country_to: string }) => {
+        const result = data.map((row: { corridor: string; total_migrants: number; country_from: string; country_to: string }) => {
             const fromName = mapping.get(row.country_from) || row.country_from
             const toName = mapping.get(row.country_to) || row.country_to
             const displayName = `${fromName} → ${toName}`
@@ -250,6 +251,8 @@ export async function getTopCorridorsServer(filters: MigrationFilters = {}, limi
                 displayName
             }
         })
+        
+        return result
     } catch (error) {
         console.error('Error in getTopCorridorsServer:', error)
 
@@ -279,7 +282,8 @@ export async function getCorridorTimeSeriesServer(
             p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
             p_min_flow: filters.minFlowSize ?? 0,
             p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
+            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all'),
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
         })
 
         if (error) {
@@ -356,11 +360,93 @@ export function searchParamsToFilters(searchParams: URLSearchParams): MigrationF
         filters.flowDirection = flowDirection
     }
 
-    // Period
-    const period = searchParams.get('period')
-    if (period === 'pre_pandemic' || period === 'pandemic') {
-        filters.period = period
+    // Time aggregation
+    const timeAggregation = searchParams.get('time_aggregation')
+    if (timeAggregation === 'monthly' || timeAggregation === 'quarterly' || timeAggregation === 'yearly') {
+        filters.timeAggregation = timeAggregation
     }
 
     return filters
+}
+
+/**
+ * Server-side function to get quarterly migration data
+ */
+export async function getQuarterlyDataServer(filters: MigrationFilters = {}): Promise<{ month: string; total: number; season: string; quarter: number }[]> {
+    try {
+        const supabase = await createClient()
+        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        
+        const { data, error } = await supabase.rpc('get_quarterly_migration_data', {
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
+            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
+            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
+            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
+            p_min_flow: filters.minFlowSize ?? 0,
+            p_max_flow: filters.maxFlowSize ?? null,
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
+        })
+
+        if (error) {
+            console.error('Error calling get_quarterly_migration_data RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
+        }
+
+        if (!data) return []
+
+        return data.map((row: { month: string; total: number; season: string; quarter: number }) => ({
+            month: row.month,
+            total: Number(row.total) || 0,
+            season: row.season,
+            quarter: Number(row.quarter) || 1
+        }))
+    } catch (error) {
+        console.error('Error in getQuarterlyDataServer:', error)
+        
+        return []
+    }
+}
+
+/**
+ * Server-side function to get seasonal patterns data
+ */
+export async function getSeasonalPatternsServer(filters: MigrationFilters = {}): Promise<{ month: string; average: number; max: number; min: number }[]> {
+    try {
+        const supabase = await createClient()
+        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
+        
+        const { data, error } = await supabase.rpc('get_seasonal_migration_patterns', {
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_regions: filters.selectedRegions?.length ? filters.selectedRegions : null,
+            p_countries: filters.selectedCountries?.length ? filters.selectedCountries : null,
+            p_excluded_countries: filters.excludedCountries?.length ? filters.excludedCountries : null,
+            p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
+            p_min_flow: filters.minFlowSize ?? 0,
+            p_max_flow: filters.maxFlowSize ?? null,
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
+        })
+
+        if (error) {
+            console.error('Error calling get_seasonal_migration_patterns RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
+        }
+
+        if (!data) return []
+
+        return data.map((row: { month: string; average: number; max_value: number; min_value: number }) => ({
+            month: row.month,
+            average: Number(row.average) || 0,
+            max: Number(row.max_value) || 0,
+            min: Number(row.min_value) || 0
+        }))
+    } catch (error) {
+        console.error('Error in getSeasonalPatternsServer:', error)
+        
+        return []
+    }
 }

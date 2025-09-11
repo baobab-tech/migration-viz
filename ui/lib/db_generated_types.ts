@@ -88,6 +88,25 @@ export type Database = {
         }
         Relationships: []
       }
+      flows_corridor_monthly_agg: {
+        Row: {
+          country_from: string | null
+          country_to: string | null
+          migration_month: string | null
+          num_migrants: number | null
+          period: string | null
+          quarter: number | null
+          region_from: string | null
+          region_to: string | null
+          rolling_3m: number | null
+          same_month_prev_year: number | null
+          season: string | null
+          subregion_from: string | null
+          subregion_to: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       flows_corridor_rankings_annual: {
         Row: {
           country_from: string | null
@@ -99,12 +118,19 @@ export type Database = {
         }
         Relationships: []
       }
-      flows_country_to_country_annual: {
+      flows_country_to_country_annual_totals: {
         Row: {
           country_from: string | null
           country_to: string | null
+          intermediate_from: string | null
+          intermediate_to: string | null
           num_migrants: number | null
+          region_from: string | null
+          region_to: string | null
+          subregion_from: string | null
+          subregion_to: string | null
           year: number | null
+          year_date: string | null
         }
         Relationships: []
       }
@@ -128,13 +154,20 @@ export type Database = {
         }
         Relationships: []
       }
-      flows_country_to_country_quarterly: {
+      flows_country_to_country_quarterly_totals: {
         Row: {
           country_from: string | null
           country_to: string | null
+          intermediate_from: string | null
+          intermediate_to: string | null
           num_migrants: number | null
           quarter: number | null
+          quarter_date: string | null
           quarter_year: string | null
+          region_from: string | null
+          region_to: string | null
+          subregion_from: string | null
+          subregion_to: string | null
           year: number | null
         }
         Relationships: []
@@ -168,15 +201,6 @@ export type Database = {
         }
         Relationships: []
       }
-      flows_intermediate_to_intermediate_monthly: {
-        Row: {
-          intermediate_from: string | null
-          intermediate_to: string | null
-          migration_month: string | null
-          num_migrants: number | null
-        }
-        Relationships: []
-      }
       flows_net_annual_country: {
         Row: {
           country_from: string | null
@@ -184,17 +208,6 @@ export type Database = {
           gross_flow: number | null
           net_flow: number | null
           year: number | null
-        }
-        Relationships: []
-      }
-      flows_pandemic_comparison_country: {
-        Row: {
-          change_absolute: number | null
-          change_percent: number | null
-          country_from: string | null
-          country_to: string | null
-          pandemic: number | null
-          pre_pandemic: number | null
         }
         Relationships: []
       }
@@ -207,21 +220,25 @@ export type Database = {
         }
         Relationships: []
       }
-      flows_region_to_region_annual: {
+      flows_regional_annual: {
         Row: {
           num_migrants: number | null
           region_from: string | null
           region_to: string | null
+          subregion_from: string | null
+          subregion_to: string | null
           year: number | null
         }
         Relationships: []
       }
-      flows_region_to_region_monthly: {
+      flows_regional_monthly: {
         Row: {
           migration_month: string | null
           num_migrants: number | null
           region_from: string | null
           region_to: string | null
+          subregion_from: string | null
+          subregion_to: string | null
         }
         Relationships: []
       }
@@ -234,26 +251,6 @@ export type Database = {
           rolling_3m: number | null
           rolling_6m: number | null
           trend_slope: number | null
-        }
-        Relationships: []
-      }
-      flows_seasonal_patterns_country: {
-        Row: {
-          country_from: string | null
-          country_to: string | null
-          q1: number | null
-          q2: number | null
-          q3: number | null
-          q4: number | null
-        }
-        Relationships: []
-      }
-      flows_subregion_to_subregion_monthly: {
-        Row: {
-          migration_month: string | null
-          num_migrants: number | null
-          subregion_from: string | null
-          subregion_to: string | null
         }
         Relationships: []
       }
@@ -289,6 +286,7 @@ export type Database = {
           p_period?: string
           p_regions?: string[]
           p_start_date?: string
+          p_time_aggregation?: string
         }
         Returns: {
           corridor: string
@@ -337,6 +335,35 @@ export type Database = {
           total_migrants: number
         }[]
       }
+      get_migration_patterns: {
+        Args:
+          | {
+              p_aggregation_level?: string
+              p_corridors?: string[]
+              p_countries?: string[]
+              p_end_date?: string
+              p_limit?: number
+              p_pattern_type?: string
+              p_regions?: string[]
+              p_start_date?: string
+            }
+          | {
+              p_aggregation_level?: string
+              p_corridors?: string[]
+              p_countries?: string[]
+              p_end_date?: string
+              p_limit?: number
+              p_pattern_type?: string
+              p_regions?: string[]
+              p_start_date?: string
+              p_time_aggregation?: string
+            }
+        Returns: {
+          from_entity: string
+          pattern_data: Json
+          to_entity: string
+        }[]
+      }
       get_monthly_migration_totals: {
         Args: {
           p_countries?: string[]
@@ -348,10 +375,70 @@ export type Database = {
           p_period?: string
           p_regions?: string[]
           p_start_date?: string
+          p_time_aggregation?: string
         }
         Returns: {
           month: string
           total_migrants: number
+        }[]
+      }
+      get_quarterly_migration_data: {
+        Args: {
+          p_countries?: string[]
+          p_end_date?: string
+          p_excluded_countries?: string[]
+          p_excluded_regions?: string[]
+          p_max_flow?: number
+          p_min_flow?: number
+          p_period?: string
+          p_regions?: string[]
+          p_start_date?: string
+          p_time_aggregation?: string
+        }
+        Returns: {
+          month: string
+          quarter: number
+          season: string
+          total: number
+        }[]
+      }
+      get_regional_flows: {
+        Args: {
+          p_aggregation_level?: string
+          p_end_date?: string
+          p_limit?: number
+          p_regions?: string[]
+          p_start_date?: string
+          p_subregions?: string[]
+          p_time_aggregation?: string
+        }
+        Returns: {
+          from_region: string
+          from_subregion: string
+          time_period: string
+          to_region: string
+          to_subregion: string
+          total_migrants: number
+        }[]
+      }
+      get_seasonal_migration_patterns: {
+        Args: {
+          p_countries?: string[]
+          p_end_date?: string
+          p_excluded_countries?: string[]
+          p_excluded_regions?: string[]
+          p_max_flow?: number
+          p_min_flow?: number
+          p_period?: string
+          p_regions?: string[]
+          p_start_date?: string
+          p_time_aggregation?: string
+        }
+        Returns: {
+          average: number
+          max_value: number
+          min_value: number
+          month: string
         }[]
       }
       refresh_migration_views: {

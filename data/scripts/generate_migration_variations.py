@@ -85,9 +85,7 @@ class MigrationDataProcessor:
         self.df['intermediate_from'] = self.df['country_from'].map(self.country_to_intermediate)
         self.df['intermediate_to'] = self.df['country_to'].map(self.country_to_intermediate)
         
-        # Add period classifications
-        self.df['is_pandemic'] = self.df['year'] >= 2020
-        self.df['period'] = self.df['is_pandemic'].map({True: 'pandemic', False: 'pre_pandemic'})
+        # Add seasonal classifications (quarters)
         
         # Add season
         season_map = {12: 'Winter', 1: 'Winter', 2: 'Winter',
@@ -242,23 +240,6 @@ class MigrationDataProcessor:
         
         return self.output_dir / "flows_country_to_country_annual.json"
 
-    def generate_pandemic_comparison(self):
-        """Generate pre-pandemic vs pandemic period comparisons"""
-        print("Generating pandemic period comparisons...")
-        
-        # Country-to-country by period
-        period_flows = self.df.groupby(['country_from', 'country_to', 'period'])['num_migrants'].sum().reset_index()
-        period_flows_pivot = period_flows.pivot(index=['country_from', 'country_to'], columns='period', values='num_migrants').reset_index()
-        period_flows_pivot = period_flows_pivot.fillna(0)
-        
-        if 'pre_pandemic' in period_flows_pivot.columns and 'pandemic' in period_flows_pivot.columns:
-            period_flows_pivot['change_absolute'] = period_flows_pivot['pandemic'] - period_flows_pivot['pre_pandemic']
-            period_flows_pivot['change_percent'] = (period_flows_pivot['change_absolute'] / 
-                                                   period_flows_pivot['pre_pandemic'].replace(0, np.nan)) * 100
-        
-        period_flows_pivot.to_json(self.output_dir / "flows_pandemic_comparison_country.json", orient='records')
-        
-        return self.output_dir / "flows_pandemic_comparison_country.json"
 
     def generate_seasonal_patterns(self):
         """Generate seasonal pattern analysis"""
@@ -405,7 +386,6 @@ class MigrationDataProcessor:
         print("-" * 25)
         generated_files.append(self.generate_quarterly_averages())
         generated_files.append(self.generate_annual_totals())
-        generated_files.append(self.generate_pandemic_comparison())
         generated_files.append(self.generate_seasonal_patterns())
         generated_files.append(self.generate_rolling_averages())
         

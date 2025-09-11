@@ -8,7 +8,13 @@ alwaysApply: false
 - Use pnpm no npm to install
 - Never run `pnpm dev` just assume its running!
 
+- Avoid using the index of an array as key property in an element.biomelint/suspicious/noArrayIndexKey
+
 - In building supabase (db) queries .. ALWAYS search the web (documentation) on how to do things like filters, rpc function calls, etc. before implementing a solution that involves supabase
 - To get the latest types from the db run from the /ui folder `npx supabase gen types --project-id jmxonbzvxtbbmpejgyqk > lib/db_generated_types.ts`
 
 - In using data, avoid doing client-side aggregation, leverage RPC (SQL functions) instead
+
+- When building data related functions and queries and data manipulation, know that you can work with functions.sql and views.sql and queries to make things more efficient, re-use existing views, functions or if needed create new ones. Limit client side or ever server side processing.. push the work to the functions.sql or views.sql
+
+- Always new line before a `return ..`
