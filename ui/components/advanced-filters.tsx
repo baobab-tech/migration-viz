@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-// @ts-ignore - Fuse.js types might not be available
 import Fuse from "fuse.js"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"

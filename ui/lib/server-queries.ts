@@ -266,8 +266,8 @@ export async function getCorridorTimeSeriesServer(
 ): Promise<{ corridor: string; countryA: string; countryB: string; month: string; migrants: number }[]> {
     try {
         const supabase = await createClient()
-        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0], false) : '2019-01-01'
-        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1], true) : '2022-12-31'
+        const startDate = filters.dateRange?.[0] ? normalizeDate(filters.dateRange[0]) : '2019-01-01'
+        const endDate = filters.dateRange?.[1] ? normalizeDate(filters.dateRange[1]) : '2022-12-31'
         
         const { data, error } = await supabase.rpc('get_corridor_time_series', {
             p_corridors: corridors.length > 0 ? corridors : null,
@@ -298,6 +298,7 @@ export async function getCorridorTimeSeriesServer(
         }))
     } catch (error) {
         console.error('Error in getCorridorTimeSeriesServer:', error)
+        
         return []
     }
 }
