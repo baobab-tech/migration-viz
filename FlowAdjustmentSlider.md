@@ -1,5 +1,3 @@
-Migration Flow Analysis PoC | FT Hub
-
 # Migration flow *adjustment* “model” for structured speculation
 
 Brief specs on the approach to creating a “flow adjustment slider” to see effects including assumptions and limitations

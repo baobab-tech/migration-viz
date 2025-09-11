@@ -1,0 +1,14 @@
+---
+globs: ui/**/*.ts,ui/**/*.tsx
+alwaysApply: false
+---
+
+- Use NextJS 15, React 19, Tailwind 3
+- Use use shadcn components `npx shadcn add [component]`
+- Use pnpm no npm to install
+- Never run `pnpm dev` just assume its running!
+
+- In building supabase (db) queries .. ALWAYS search the web (documentation) on how to do things like filters, rpc function calls, etc. before implementing a solution that involves supabase
+- To get the latest types from the db run from the /ui folder `npx supabase gen types --project-id jmxonbzvxtbbmpejgyqk > lib/db_generated_types.ts`
+
+- In using data, avoid doing client-side aggregation, leverage RPC (SQL functions) instead

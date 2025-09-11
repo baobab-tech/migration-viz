@@ -1,0 +1,8 @@
+---
+globs: *.py,scripts/**/*.py
+alwaysApply: false
+---
+
+- Use Python
+- Use uv for env management
+- Use `uv run python ...` from the /data as root for scripts to run

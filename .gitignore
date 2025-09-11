@@ -1,1 +1,9 @@
 /data/original/*.csv
+/data/original/*.json
+/data/original/*.txt
+/data/processed/*.csv
+/data/processed/*.json
+/data/processed/*.txt
+
+.venv
+.env*
