@@ -1,10 +1,11 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from "react"
+import Fuse from "fuse.js"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   LineChart,
@@ -24,8 +25,8 @@ import {
   ComposedChart,
   Bar,
 } from "recharts"
-import { type MigrationFlow, getCountryName, getCorridorTimeSeriesRPC, type MigrationFilters } from "@/lib/queries"
-import { TrendingUp, Calendar, BarChart3, RadarIcon } from "lucide-react"
+import { type MigrationFlow, getCorridorTimeSeriesRPC, type MigrationFilters, getCountryNameMappings } from "@/lib/queries"
+import { TrendingUp, Calendar, BarChart3, RadarIcon, Search } from "lucide-react"
 
 interface TimeSeriesChartsProps {
   data: MigrationFlow[]
@@ -37,25 +38,49 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
   const [comparisonMode, setComparisonMode] = useState<"absolute" | "normalized" | "growth">("absolute")
   const [corridorData, setCorridorData] = useState<{ corridor: string; countryA: string; countryB: string; month: string; migrants: number }[]>([])
   const [loading, setLoading] = useState(false)
+  const [countryNames, setCountryNames] = useState<Record<string, string>>({})
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
 
-  // Fetch corridor time series data from server
-  const fetchCorridorData = async () => {
-    if (selectedCorridors.length === 0) return
-    
-    setLoading(true)
-    try {
-      const data = await getCorridorTimeSeriesRPC(selectedCorridors, filters)
-      setCorridorData(data)
-    } catch (error) {
-      console.error('Error fetching corridor data:', error)
-      setCorridorData([])
-    } finally {
-      setLoading(false)
+  // Load country names on mount
+  useEffect(() => {
+    const loadCountryNames = async () => {
+      try {
+        const names = await getCountryNameMappings()
+        setCountryNames(names)
+      } catch (error) {
+        console.error('Error loading country names:', error)
+      }
     }
-  }
+    loadCountryNames()
+  }, [])
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 150)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   // Fetch data when corridors or filters change
   useEffect(() => {
+    const fetchCorridorData = async () => {
+      if (selectedCorridors.length === 0) return
+      
+      setLoading(true)
+      try {
+        const data = await getCorridorTimeSeriesRPC(selectedCorridors, filters)
+        setCorridorData(data)
+      } catch (error) {
+        console.error('Error fetching corridor data:', error)
+        setCorridorData([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
     fetchCorridorData()
   }, [selectedCorridors, filters])
 
@@ -171,6 +196,47 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
     })
   }, [data])
 
+  // Initialize Fuse.js for corridor search
+  const corridorFuse = useMemo(() => {
+    if (Object.keys(countryNames).length === 0) return null
+    
+    const corridors = new Set<string>()
+    data.forEach((flow) => {
+      corridors.add(`${flow.countryA}-${flow.countryB}`)
+    })
+
+    const corridorData = Array.from(corridors).map((corridor) => {
+      const [from, to] = corridor.split("-")
+
+      return {
+        value: corridor,
+        label: `${countryNames[from] || from} → ${countryNames[to] || to}`,
+        from: countryNames[from] || from,
+        to: countryNames[to] || to,
+        total: data.filter((d) => `${d.countryA}-${d.countryB}` === corridor).reduce((sum, d) => sum + d.number, 0),
+      }
+    })
+
+    return new Fuse(corridorData, {
+      keys: [
+        { name: 'label', weight: 0.7 },
+        { name: 'from', weight: 0.2 },
+        { name: 'to', weight: 0.1 }
+      ],
+      threshold: 0.3,
+      includeScore: true
+    })
+  }, [data, countryNames])
+
+  // Get filtered search results
+  const searchResults = useMemo(() => {
+    if (!corridorFuse || !debouncedSearchQuery.trim()) return []
+    
+    return corridorFuse.search(debouncedSearchQuery)
+      .slice(0, 10) // Limit to top 10 results
+      .map(result => result.item)
+  }, [corridorFuse, debouncedSearchQuery])
+
   // Get available corridors for selection
   const availableCorridors = useMemo(() => {
     const corridors = new Set<string>()
@@ -184,13 +250,13 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
         
         return {
           value: corridor,
-          label: `${getCountryName(from)} → ${getCountryName(to)}`,
+          label: `${countryNames[from] || from} → ${countryNames[to] || to}`,
           total: data.filter((d) => `${d.countryA}-${d.countryB}` === corridor).reduce((sum, d) => sum + d.number, 0),
         }
       })
       .sort((a, b) => b.total - a.total)
       .slice(0, 20) // Top 20 corridors
-  }, [data])
+  }, [data, countryNames])
 
   // Auto-select top 3 corridors if none are selected
   React.useEffect(() => {
@@ -203,6 +269,11 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
     if (!selectedCorridors.includes(corridor) && selectedCorridors.length < 8) {
       setSelectedCorridors([...selectedCorridors, corridor])
     }
+  }
+
+  const addCorridorFromSearch = (corridor: string) => {
+    addCorridor(corridor)
+    setSearchQuery("") // Clear search after selection
   }
 
   const removeCorridor = (corridor: string) => {
@@ -262,20 +333,41 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                       </Button>
                     ))}
                   </div>
-                  <Select onValueChange={addCorridor}>
-                    <SelectTrigger className="w-64">
-                      <SelectValue placeholder="Add corridor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCorridors
-                        .filter((c) => !selectedCorridors.includes(c.value))
-                        .map((corridor) => (
-                          <SelectItem key={corridor.value} value={corridor.value}>
-                            {corridor.label}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative w-64">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search corridors to add..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    {searchResults.length > 0 && searchQuery.trim() && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {searchResults
+                          .filter((corridor) => !selectedCorridors.includes(corridor.value))
+                          .map((corridor) => (
+                            <button
+                              key={corridor.value}
+                              type="button"
+                              onClick={() => addCorridorFromSearch(corridor.value)}
+                              className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center justify-between"
+                            >
+                              <span>{corridor.label}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {(corridor.total / 1000).toFixed(0)}K
+                              </span>
+                            </button>
+                          ))}
+                        {searchResults.every((corridor) => selectedCorridors.includes(corridor.value)) && (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            All matching corridors are already selected
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -292,7 +384,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                       style={{ backgroundColor: `${corridorColors[index]}20`, borderColor: corridorColors[index] }}
                     >
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: corridorColors[index] }}></div>
-                      {getCountryName(from)} → {getCountryName(to)}
+                      {countryNames[from] || from} → {countryNames[to] || to}
                       <button 
                         type="button" 
                         onClick={() => removeCorridor(corridor)} 
@@ -337,7 +429,7 @@ export function TimeSeriesCharts({ data, filters = {} }: TimeSeriesChartsProps) 
                       }}
                       formatter={(value: number, name: string) => {
                         const [from, to] = name.split("-")
-                        const label = `${getCountryName(from)} → ${getCountryName(to)}`
+                        const label = `${countryNames[from] || from} → ${countryNames[to] || to}`
                         const formattedValue =
                           comparisonMode === "growth"
                             ? `${value.toFixed(1)}%`

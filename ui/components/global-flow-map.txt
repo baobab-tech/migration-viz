@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { countries, type MigrationFlow, getCountryName } from "@/lib/queries"
+import { countries, type MigrationFlow, getCountryNameMappings } from "@/lib/queries"
 import { worldMapPaths, countryCentroids } from "./world-map-data"
 import { Globe, Filter } from "lucide-react"
 
@@ -26,6 +26,20 @@ export function GlobalFlowMap({ data }: GlobalFlowMapProps) {
   const [flowThreshold, setFlowThreshold] = useState([1000])
   const [viewMode, setViewMode] = useState<"inbound" | "outbound" | "net">("outbound")
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null)
+  const [countryNames, setCountryNames] = useState<Record<string, string>>({})
+
+  // Load country names on mount
+  useEffect(() => {
+    const loadCountryNames = async () => {
+      try {
+        const names = await getCountryNameMappings()
+        setCountryNames(names)
+      } catch (error) {
+        console.error('Error loading country names:', error)
+      }
+    }
+    loadCountryNames()
+  }, [])
 
   const projectToSVG = (lat: number, lng: number) => {
     // Mercator projection adapted for SVG viewBox
