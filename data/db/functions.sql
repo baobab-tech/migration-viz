@@ -209,28 +209,29 @@ CREATE OR REPLACE FUNCTION get_dashboard_summary(
     p_excluded_regions TEXT[] DEFAULT NULL,
     p_min_flow INTEGER DEFAULT 0,
     p_max_flow INTEGER DEFAULT NULL,
-    p_period TEXT DEFAULT 'all'
+    p_period TEXT DEFAULT 'all',
+    p_time_aggregation TEXT DEFAULT 'monthly'
 )
 RETURNS TABLE(
     total_flows BIGINT,
     unique_corridors BIGINT,
-    active_months INTEGER,
-    avg_monthly_flow NUMERIC
+    active_periods INTEGER,
+    avg_period_flow NUMERIC
 )
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_has_filters BOOLEAN;
     v_total_flows BIGINT;
-    v_active_months INTEGER;
+    v_active_periods INTEGER;
     v_unique_corridors BIGINT;
 BEGIN
     v_has_filters := (p_regions IS NOT NULL OR p_countries IS NOT NULL OR 
                      p_excluded_countries IS NOT NULL OR p_excluded_regions IS NOT NULL OR
                      p_min_flow > 0 OR p_max_flow IS NOT NULL OR p_period != 'all');
     
-    -- Fast path: Use pre-computed summary
-    IF NOT v_has_filters AND p_start_date = '2019-01-01' AND p_end_date = '2022-12-31' THEN
+    -- Fast path: Use pre-computed summary (only for monthly aggregation with no filters)
+    IF NOT v_has_filters AND p_start_date = '2019-01-01' AND p_end_date = '2022-12-31' AND p_time_aggregation = 'monthly' THEN
         RETURN QUERY
         SELECT 
             COALESCE(SUM(total_inbound + total_outbound), 0)::BIGINT,
@@ -239,29 +240,79 @@ BEGIN
             COALESCE(SUM(total_inbound + total_outbound), 0)::NUMERIC / 48.0
         FROM country_migration_summary;
     ELSE
-        -- Split into two fast queries instead of one slow query
-        
-        -- Query 1: Get total flows and active months (fast - 133ms)
-        SELECT 
-            COALESCE(SUM(num_migrants), 0),
-            COALESCE(COUNT(DISTINCT migration_month), 0)
-        INTO v_total_flows, v_active_months
-        FROM flows_country_to_country_monthly
-        WHERE migration_month >= p_start_date
-          AND migration_month <= p_end_date
-          AND (p_regions IS NULL OR region_from = ANY(p_regions))
-          AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
-          AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
-          AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
-          AND num_migrants >= p_min_flow
-          AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
-          AND (p_period = 'all' OR period = p_period);
-        
-        -- Query 2: Get unique corridors using GROUP BY (much faster than DISTINCT)
-        SELECT COUNT(*)
-        INTO v_unique_corridors
-        FROM (
-            SELECT 1
+        -- Handle different time aggregations
+        IF p_time_aggregation = 'quarterly' THEN
+            -- Use quarterly aggregated data
+            SELECT 
+                COALESCE(SUM(num_migrants), 0),
+                COALESCE(COUNT(DISTINCT quarter_date), 0)
+            INTO v_total_flows, v_active_periods
+            FROM flows_country_to_country_quarterly_totals
+            WHERE quarter_date >= p_start_date
+              AND quarter_date <= p_end_date
+              AND (p_regions IS NULL OR region_from = ANY(p_regions))
+              AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+              AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+              AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+              AND num_migrants >= p_min_flow
+              AND (p_max_flow IS NULL OR num_migrants <= p_max_flow);
+            
+            -- Get unique corridors for quarterly data
+            SELECT COUNT(*)
+            INTO v_unique_corridors
+            FROM (
+                SELECT 1
+                FROM flows_country_to_country_quarterly_totals
+                WHERE quarter_date >= p_start_date
+                  AND quarter_date <= p_end_date
+                  AND (p_regions IS NULL OR region_from = ANY(p_regions))
+                  AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+                  AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+                  AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+                  AND num_migrants >= p_min_flow
+                  AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+                GROUP BY country_from, country_to
+            ) corridors;
+            
+        ELSIF p_time_aggregation = 'yearly' THEN
+            -- Use yearly aggregated data
+            SELECT 
+                COALESCE(SUM(num_migrants), 0),
+                COALESCE(COUNT(DISTINCT year_date), 0)
+            INTO v_total_flows, v_active_periods
+            FROM flows_country_to_country_annual_totals
+            WHERE year_date >= p_start_date
+              AND year_date <= p_end_date
+              AND (p_regions IS NULL OR region_from = ANY(p_regions))
+              AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+              AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+              AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+              AND num_migrants >= p_min_flow
+              AND (p_max_flow IS NULL OR num_migrants <= p_max_flow);
+            
+            -- Get unique corridors for yearly data
+            SELECT COUNT(*)
+            INTO v_unique_corridors
+            FROM (
+                SELECT 1
+                FROM flows_country_to_country_annual_totals
+                WHERE year_date >= p_start_date
+                  AND year_date <= p_end_date
+                  AND (p_regions IS NULL OR region_from = ANY(p_regions))
+                  AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+                  AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+                  AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+                  AND num_migrants >= p_min_flow
+                  AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+                GROUP BY country_from, country_to
+            ) corridors;
+            
+        ELSE
+            -- Default to monthly aggregation
+            SELECT 
+                COALESCE(SUM(num_migrants), 0),
+                COALESCE(COUNT(DISTINCT migration_month), 0)
+            INTO v_total_flows, v_active_periods
             FROM flows_country_to_country_monthly
             WHERE migration_month >= p_start_date
               AND migration_month <= p_end_date
@@ -271,18 +322,35 @@ BEGIN
               AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
               AND num_migrants >= p_min_flow
               AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
-              AND (p_period = 'all' OR period = p_period)
-            GROUP BY country_from, country_to
-        ) corridors;
+              AND (p_period = 'all' OR period = p_period);
+            
+            -- Get unique corridors for monthly data
+            SELECT COUNT(*)
+            INTO v_unique_corridors
+            FROM (
+                SELECT 1
+                FROM flows_country_to_country_monthly
+                WHERE migration_month >= p_start_date
+                  AND migration_month <= p_end_date
+                  AND (p_regions IS NULL OR region_from = ANY(p_regions))
+                  AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+                  AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+                  AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+                  AND num_migrants >= p_min_flow
+                  AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+                  AND (p_period = 'all' OR period = p_period)
+                GROUP BY country_from, country_to
+            ) corridors;
+        END IF;
         
         -- Return combined results
         RETURN QUERY
         SELECT 
             v_total_flows,
             v_unique_corridors,
-            v_active_months,
-            CASE WHEN v_active_months > 0 
-                 THEN v_total_flows::NUMERIC / v_active_months
+            v_active_periods,
+            CASE WHEN v_active_periods > 0 
+                 THEN v_total_flows::NUMERIC / v_active_periods
                  ELSE 0::NUMERIC END;
     END IF;
 END;

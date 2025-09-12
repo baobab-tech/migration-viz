@@ -144,7 +144,7 @@ export async function getDashboardSummaryServer(filters: MigrationFilters = {}):
     totalFlows: number
     uniqueCorridors: number
     activeMonths: number
-    avgMonthlyFlow: number
+    avgPeriodFlow: number
 }> {
     try {
         const supabase = await createClient()
@@ -160,7 +160,8 @@ export async function getDashboardSummaryServer(filters: MigrationFilters = {}):
             p_excluded_regions: filters.excludedRegions?.length ? filters.excludedRegions : null,
             p_min_flow: filters.minFlowSize ?? 0,
             p_max_flow: filters.maxFlowSize ?? null,
-            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all')
+            p_period: filters.period === 'all' ? 'all' : (filters.period ?? 'all'),
+            p_time_aggregation: filters.timeAggregation ?? 'monthly'
         })
 
         if (error) {
@@ -169,7 +170,7 @@ export async function getDashboardSummaryServer(filters: MigrationFilters = {}):
         }
 
         if (!data || data.length === 0) {
-            return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgMonthlyFlow: 0 }
+            return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgPeriodFlow: 0 }
         }
 
         const summary = data[0]
@@ -177,13 +178,13 @@ export async function getDashboardSummaryServer(filters: MigrationFilters = {}):
         return {
             totalFlows: Number(summary.total_flows) || 0,
             uniqueCorridors: Number(summary.unique_corridors) || 0,
-            activeMonths: Number(summary.active_months) || 0,
-            avgMonthlyFlow: Number(summary.avg_monthly_flow) || 0
+            activeMonths: Number(summary.active_periods) || 0,
+            avgPeriodFlow: Number(summary.avg_period_flow) || 0
         }
     } catch (error) {
         console.error('Error in getDashboardSummaryServer:', error)
 
-        return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgMonthlyFlow: 0 }
+        return { totalFlows: 0, uniqueCorridors: 0, activeMonths: 0, avgPeriodFlow: 0 }
     }
 }
 

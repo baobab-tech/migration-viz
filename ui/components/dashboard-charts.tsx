@@ -12,7 +12,7 @@ interface DashboardChartsProps {
     totalFlows: number
     uniqueCorridors: number
     activeMonths: number
-    avgMonthlyFlow: number
+    avgPeriodFlow: number
   }
   countryNames: Record<string, string>
   filters?: MigrationFilters
@@ -121,7 +121,7 @@ export function DashboardCharts({ monthlyData, topCorridors, summaryStats, count
           filters.timeAggregation === 'quarterly' ? 'Average Quarterly Flow' :
           'Average Monthly Flow'
         } className="bg-gradient-to-br from-chart-3/10 to-chart-3/5">
-          <div className="text-3xl font-bold text-chart-3">{Math.round(summaryStats.avgMonthlyFlow).toLocaleString()}</div>
+          <div className="text-3xl font-bold text-chart-3">{Math.round(summaryStats.avgPeriodFlow).toLocaleString()}</div>
           <p className="text-sm text-muted-foreground mt-1">
             {filters.timeAggregation === 'yearly' ? 'Per year average' :
              filters.timeAggregation === 'quarterly' ? 'Per quarter average' :
@@ -131,7 +131,11 @@ export function DashboardCharts({ monthlyData, topCorridors, summaryStats, count
 
         <DashboardCard title="Time Period" className="bg-gradient-to-br from-chart-4/10 to-chart-4/5">
           <div className="text-3xl font-bold text-chart-4">{summaryStats.activeMonths}</div>
-          <p className="text-sm text-muted-foreground mt-1">Months of data</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {filters.timeAggregation === 'yearly' ? 'Years of data' :
+             filters.timeAggregation === 'quarterly' ? 'Quarters of data' :
+             'Months of data'}
+          </p>
         </DashboardCard>
       </DashboardGrid>
 
