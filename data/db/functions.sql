@@ -56,8 +56,8 @@ BEGIN
             quarter_date as month,
             SUM(num_migrants)::BIGINT as total_migrants
         FROM flows_country_to_country_quarterly_totals
-        WHERE quarter_date >= p_start_date
-          AND quarter_date <= p_end_date
+        WHERE quarter_date <= p_end_date
+          AND (quarter_date + INTERVAL '3 months' - INTERVAL '1 day') >= p_start_date
           AND (p_regions IS NULL OR region_from = ANY(p_regions))
           AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
           AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -73,8 +73,8 @@ BEGIN
             year_date as month,
             SUM(num_migrants)::BIGINT as total_migrants
         FROM flows_country_to_country_annual_totals
-        WHERE year_date >= p_start_date
-          AND year_date <= p_end_date
+        WHERE year_date <= p_end_date
+          AND (year_date + INTERVAL '1 year' - INTERVAL '1 day') >= p_start_date
           AND (p_regions IS NULL OR region_from = ANY(p_regions))
           AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
           AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -141,8 +141,8 @@ BEGIN
             fcq.quarter_date as month,
             SUM(fcq.num_migrants)::BIGINT as migrants
         FROM flows_country_to_country_quarterly_totals fcq
-        WHERE fcq.quarter_date >= p_start_date
-          AND fcq.quarter_date <= p_end_date
+        WHERE fcq.quarter_date <= p_end_date
+          AND (fcq.quarter_date + INTERVAL '3 months' - INTERVAL '1 day') >= p_start_date
           AND (p_corridors IS NULL OR (fcq.country_from || '-' || fcq.country_to) = ANY(p_corridors))
           AND (p_regions IS NULL OR fcq.region_from = ANY(p_regions))
           AND (p_countries IS NULL OR fcq.country_from = ANY(p_countries) OR fcq.country_to = ANY(p_countries))
@@ -162,8 +162,8 @@ BEGIN
             fca.year_date as month,
             SUM(fca.num_migrants)::BIGINT as migrants
         FROM flows_country_to_country_annual_totals fca
-        WHERE fca.year_date >= p_start_date
-          AND fca.year_date <= p_end_date
+        WHERE fca.year_date <= p_end_date
+          AND (fca.year_date + INTERVAL '1 year' - INTERVAL '1 day') >= p_start_date
           AND (p_corridors IS NULL OR (fca.country_from || '-' || fca.country_to) = ANY(p_corridors))
           AND (p_regions IS NULL OR fca.region_from = ANY(p_regions))
           AND (p_countries IS NULL OR fca.country_from = ANY(p_countries) OR fca.country_to = ANY(p_countries))
@@ -248,8 +248,8 @@ BEGIN
                 COALESCE(COUNT(DISTINCT quarter_date), 0)
             INTO v_total_flows, v_active_periods
             FROM flows_country_to_country_quarterly_totals
-            WHERE quarter_date >= p_start_date
-              AND quarter_date <= p_end_date
+            WHERE quarter_date <= p_end_date
+              AND (quarter_date + INTERVAL '3 months' - INTERVAL '1 day') >= p_start_date
               AND (p_regions IS NULL OR region_from = ANY(p_regions))
               AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
               AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -263,8 +263,8 @@ BEGIN
             FROM (
                 SELECT 1
                 FROM flows_country_to_country_quarterly_totals
-                WHERE quarter_date >= p_start_date
-                  AND quarter_date <= p_end_date
+                WHERE quarter_date <= p_end_date
+                  AND (quarter_date + INTERVAL '3 months' - INTERVAL '1 day') >= p_start_date
                   AND (p_regions IS NULL OR region_from = ANY(p_regions))
                   AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
                   AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -281,8 +281,8 @@ BEGIN
                 COALESCE(COUNT(DISTINCT year_date), 0)
             INTO v_total_flows, v_active_periods
             FROM flows_country_to_country_annual_totals
-            WHERE year_date >= p_start_date
-              AND year_date <= p_end_date
+            WHERE year_date <= p_end_date
+              AND (year_date + INTERVAL '1 year' - INTERVAL '1 day') >= p_start_date
               AND (p_regions IS NULL OR region_from = ANY(p_regions))
               AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
               AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -296,8 +296,8 @@ BEGIN
             FROM (
                 SELECT 1
                 FROM flows_country_to_country_annual_totals
-                WHERE year_date >= p_start_date
-                  AND year_date <= p_end_date
+                WHERE year_date <= p_end_date
+                  AND (year_date + INTERVAL '1 year' - INTERVAL '1 day') >= p_start_date
                   AND (p_regions IS NULL OR region_from = ANY(p_regions))
                   AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
                   AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
@@ -309,20 +309,27 @@ BEGIN
             
         ELSE
             -- Default to monthly aggregation
+            WITH monthly_totals AS (
+                SELECT 
+                    migration_month,
+                    SUM(num_migrants) as month_total
+                FROM flows_country_to_country_monthly
+                WHERE migration_month >= p_start_date
+                  AND migration_month <= p_end_date
+                  AND (p_regions IS NULL OR region_from = ANY(p_regions))
+                  AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+                  AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+                  AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+                  AND num_migrants >= p_min_flow
+                  AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+                  AND (p_period = 'all' OR period = p_period)
+                GROUP BY migration_month
+            )
             SELECT 
-                COALESCE(SUM(num_migrants), 0),
+                COALESCE(SUM(month_total), 0),
                 COALESCE(COUNT(DISTINCT migration_month), 0)
             INTO v_total_flows, v_active_periods
-            FROM flows_country_to_country_monthly
-            WHERE migration_month >= p_start_date
-              AND migration_month <= p_end_date
-              AND (p_regions IS NULL OR region_from = ANY(p_regions))
-              AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
-              AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
-              AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
-              AND num_migrants >= p_min_flow
-              AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
-              AND (p_period = 'all' OR period = p_period);
+            FROM monthly_totals;
             
             -- Get unique corridors for monthly data
             SELECT COUNT(*)

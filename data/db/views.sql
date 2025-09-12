@@ -154,14 +154,15 @@ SELECT
     DATE_TRUNC('quarter', migration_month)::DATE as quarter_date,
     year || '-Q' || quarter as quarter_year,
     SUM(num_migrants) as num_migrants,
-    region_from,
-    region_to,
-    subregion_from,
-    subregion_to,
-    intermediate_from,
-    intermediate_to
+    -- Use MAX to get non-null region values, ensuring consistent aggregation
+    MAX(region_from) as region_from,
+    MAX(region_to) as region_to,
+    MAX(subregion_from) as subregion_from,
+    MAX(subregion_to) as subregion_to,
+    MAX(intermediate_from) as intermediate_from,
+    MAX(intermediate_to) as intermediate_to
 FROM flows_country_to_country_monthly
-GROUP BY country_from, country_to, year, quarter, DATE_TRUNC('quarter', migration_month), region_from, region_to, subregion_from, subregion_to, intermediate_from, intermediate_to;
+GROUP BY country_from, country_to, year, quarter, DATE_TRUNC('quarter', migration_month);
 
 CREATE INDEX idx_flows_country_quarterly_totals ON flows_country_to_country_quarterly_totals(country_from, country_to, year, quarter);
 CREATE INDEX idx_flows_country_quarterly_totals_region ON flows_country_to_country_quarterly_totals(region_from, region_to, year, quarter);
@@ -178,14 +179,15 @@ SELECT
     year,
     DATE_TRUNC('year', migration_month)::DATE as year_date,
     SUM(num_migrants) as num_migrants,
-    region_from,
-    region_to,
-    subregion_from,
-    subregion_to,
-    intermediate_from,
-    intermediate_to
+    -- Use MAX to get non-null region values, ensuring consistent aggregation
+    MAX(region_from) as region_from,
+    MAX(region_to) as region_to,
+    MAX(subregion_from) as subregion_from,
+    MAX(subregion_to) as subregion_to,
+    MAX(intermediate_from) as intermediate_from,
+    MAX(intermediate_to) as intermediate_to
 FROM flows_country_to_country_monthly
-GROUP BY country_from, country_to, year, DATE_TRUNC('year', migration_month), region_from, region_to, subregion_from, subregion_to, intermediate_from, intermediate_to;
+GROUP BY country_from, country_to, year, DATE_TRUNC('year', migration_month);
 
 CREATE INDEX idx_flows_country_annual_totals ON flows_country_to_country_annual_totals(country_from, country_to, year);
 CREATE INDEX idx_flows_country_annual_totals_region ON flows_country_to_country_annual_totals(region_from, region_to, year);
