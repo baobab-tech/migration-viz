@@ -15,7 +15,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "Migration Viz",
-  description: "Migration Viz",
+  description: "Global Migration Flow Visualization Dashboard",
 };
 
 export default function RootLayout({

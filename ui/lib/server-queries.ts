@@ -432,3 +432,167 @@ export async function getSeasonalPatternsServer(filters: MigrationFilters = {}):
         return []
     }
 }
+
+/**
+ * Server-side function to get available countries for corridor selection
+ */
+export async function getCorridorCountriesServer(): Promise<{
+    iso2Code: string;
+    countryName: string;
+    regionName: string;
+    hasOutboundFlows: boolean;
+    hasInboundFlows: boolean;
+    totalFlowVolume: number;
+}[]> {
+    try {
+        const supabase = await createClient()
+        
+        const { data, error } = await supabase.rpc('get_corridor_countries')
+
+        if (error) {
+            console.error('Error calling get_corridor_countries RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
+        }
+
+        if (!data) return []
+
+        return data.map((row: { 
+            iso2_code: string;
+            country_name: string;
+            region_name: string;
+            has_outbound_flows: boolean;
+            has_inbound_flows: boolean;
+            total_flow_volume: number;
+        }) => ({
+            iso2Code: row.iso2_code,
+            countryName: row.country_name,
+            regionName: row.region_name,
+            hasOutboundFlows: row.has_outbound_flows,
+            hasInboundFlows: row.has_inbound_flows,
+            totalFlowVolume: Number(row.total_flow_volume) || 0
+        }))
+    } catch (error) {
+        console.error('Error in getCorridorCountriesServer:', error)
+        
+        return []
+    }
+}
+
+/**
+ * Server-side function to get enhanced corridor sankey data supporting multiple origins/destinations and regions
+ */
+export async function getEnhancedCorridorSankeyDataServer(
+    fromCountries: string[] = [],
+    toCountries: string[] = [],
+    fromRegions: string[] = [],
+    toRegions: string[] = [],
+    dateRange: [string, string] = ['2019-01', '2022-12'],
+    limit: number = 20
+): Promise<{ countryFrom: string; countryTo: string; countryFromName: string; countryToName: string; totalMigrants: number }[]> {
+    try {
+        // If no selections made, return empty array (let UI show empty state)
+        const hasSelections = fromCountries.length > 0 || toCountries.length > 0 || fromRegions.length > 0 || toRegions.length > 0
+        if (!hasSelections) {
+            return []
+        }
+
+        const supabase = await createClient()
+        const startDate = normalizeDate(dateRange[0])
+        const endDate = normalizeDate(dateRange[1], true)
+        
+        // Use the new enhanced corridor sankey function that handles separate FROM and TO arrays
+        const { data, error } = await supabase.rpc('get_enhanced_corridor_sankey_data', {
+            p_from_countries: fromCountries.length > 0 ? fromCountries : null,
+            p_to_countries: toCountries.length > 0 ? toCountries : null,
+            p_from_regions: fromRegions.length > 0 ? fromRegions : null,
+            p_to_regions: toRegions.length > 0 ? toRegions : null,
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_limit: limit
+        })
+
+        if (error) {
+            console.error('Error calling get_enhanced_corridor_sankey_data RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
+        }
+
+        if (!data) return []
+
+        // Data is already properly filtered and includes country names
+        return data.map((row: { 
+            country_from: string; 
+            country_to: string; 
+            country_from_name: string;
+            country_to_name: string;
+            total_migrants: number 
+        }) => ({
+            countryFrom: row.country_from,
+            countryTo: row.country_to,
+            countryFromName: row.country_from_name,
+            countryToName: row.country_to_name,
+            totalMigrants: Number(row.total_migrants) || 0
+        }))
+    } catch (error) {
+        console.error('Error in getEnhancedCorridorSankeyDataServer:', error)
+        
+        return []
+    }
+}
+
+/**
+ * Server-side function to get enhanced corridor timeline data supporting multiple origins/destinations and regions
+ */
+export async function getEnhancedCorridorTimelineDataServer(
+    fromCountries: string[] = [],
+    toCountries: string[] = [],
+    fromRegions: string[] = [],
+    _toRegions: string[] = [],
+    dateRange: [string, string] = ['2019-01', '2022-12'],
+    timeAggregation: 'monthly' | 'quarterly' | 'yearly' = 'yearly'
+): Promise<{ corridor: string; countryFrom: string; countryTo: string; month: string; migrants: number }[]> {
+    try {
+        // If no selections made, return empty array (let UI show empty state)
+        const hasSelections = fromCountries.length > 0 || toCountries.length > 0 || fromRegions.length > 0
+        if (!hasSelections) {
+            return []
+        }
+
+        const supabase = await createClient()
+        const startDate = normalizeDate(dateRange[0])
+        const endDate = normalizeDate(dateRange[1], true)
+        
+        // Use monthly migration totals for timeline data
+        const { data, error } = await supabase.rpc('get_monthly_migration_totals', {
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_regions: fromRegions.length > 0 ? fromRegions : null,
+            p_countries: fromCountries.length > 0 || toCountries.length > 0 ? [...fromCountries, ...toCountries].filter(Boolean) : null,
+            p_excluded_countries: null,
+            p_excluded_regions: null,
+            p_min_flow: 0,
+            p_max_flow: null,
+            p_period: 'all',
+            p_time_aggregation: timeAggregation
+        })
+
+        if (error) {
+            console.error('Error calling get_monthly_migration_totals RPC:', error)
+            throw new Error(`RPC call failed: ${error.message}`)
+        }
+
+        if (!data) return []
+
+        // Transform the aggregated data into corridor format for the timeline chart
+        return data.map((row: { month: string; total_migrants: number }) => ({
+            corridor: 'Selected Flow',
+            countryFrom: fromCountries.length > 0 ? fromCountries[0] : 'Multiple',
+            countryTo: toCountries.length > 0 ? toCountries[0] : 'Multiple',
+            month: row.month,
+            migrants: Number(row.total_migrants) || 0
+        }))
+    } catch (error) {
+        console.error('Error in getEnhancedCorridorTimelineDataServer:', error)
+        
+        return []
+    }
+}

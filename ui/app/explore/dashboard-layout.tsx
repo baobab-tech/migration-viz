@@ -22,13 +22,6 @@ export function DashboardLayout({ children, title, description }: DashboardLayou
           {description && (
             <div className="flex items-center justify-center gap-4 max-w-2xl mx-auto">
               <p className="text-lg text-muted-foreground text-pretty">{description}</p>
-              <Link 
-                href="/about-data"
-                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors bg-muted/30 hover:bg-muted/50 px-3 py-2 rounded-lg border border-border/50 whitespace-nowrap"
-              >
-                <Info className="h-4 w-4" />
-                About the source data
-              </Link>
             </div>
           )}
         </div>

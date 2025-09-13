@@ -17,4 +17,4 @@ alwaysApply: false
 
 - When building data related functions and queries and data manipulation, know that you can work with functions.sql and views.sql and queries to make things more efficient, re-use existing views, functions or if needed create new ones. Limit client side or ever server side processing.. push the work to the functions.sql or views.sql
 
-- Always new line before a `return ..`
+- Always add a new line (empty line) before any and every `return ...` line in .tsx and .ts files.

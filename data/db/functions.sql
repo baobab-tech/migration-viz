@@ -309,27 +309,20 @@ BEGIN
             
         ELSE
             -- Default to monthly aggregation
-            WITH monthly_totals AS (
-                SELECT 
-                    migration_month,
-                    SUM(num_migrants) as month_total
-                FROM flows_country_to_country_monthly
-                WHERE migration_month >= p_start_date
-                  AND migration_month <= p_end_date
-                  AND (p_regions IS NULL OR region_from = ANY(p_regions))
-                  AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
-                  AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
-                  AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
-                  AND num_migrants >= p_min_flow
-                  AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
-                  AND (p_period = 'all' OR period = p_period)
-                GROUP BY migration_month
-            )
             SELECT 
-                COALESCE(SUM(month_total), 0),
+                COALESCE(SUM(num_migrants), 0),
                 COALESCE(COUNT(DISTINCT migration_month), 0)
             INTO v_total_flows, v_active_periods
-            FROM monthly_totals;
+            FROM flows_country_to_country_monthly
+            WHERE migration_month >= p_start_date
+              AND migration_month <= p_end_date
+              AND (p_regions IS NULL OR region_from = ANY(p_regions))
+              AND (p_countries IS NULL OR country_from = ANY(p_countries) OR country_to = ANY(p_countries))
+              AND (p_excluded_countries IS NULL OR (country_from != ALL(p_excluded_countries) AND country_to != ALL(p_excluded_countries)))
+              AND (p_excluded_regions IS NULL OR region_from != ALL(p_excluded_regions))
+              AND num_migrants >= p_min_flow
+              AND (p_max_flow IS NULL OR num_migrants <= p_max_flow)
+              AND (p_period = 'all' OR period = p_period);
             
             -- Get unique corridors for monthly data
             SELECT COUNT(*)
@@ -583,5 +576,139 @@ BEGIN
         min_total as min_value
     FROM seasonal_stats
     ORDER BY period_num;
+END;
+$$;
+
+-- 6. Corridor-Specific Analysis Functions
+
+-- Get corridor sankey data (flows for specific from/to countries)
+CREATE OR REPLACE FUNCTION get_corridor_sankey_data(
+    p_from_country TEXT DEFAULT NULL,
+    p_to_country TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2019-01-01',
+    p_end_date DATE DEFAULT '2022-12-31',
+    p_time_aggregation TEXT DEFAULT 'total',
+    p_limit INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    country_from VARCHAR(2),
+    country_to VARCHAR(2), 
+    country_from_name TEXT,
+    country_to_name TEXT,
+    total_migrants BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        fcm.country_from,
+        fcm.country_to,
+        COALESCE(r_from.country_name, fcm.country_from) as country_from_name,
+        COALESCE(r_to.country_name, fcm.country_to) as country_to_name,
+        SUM(fcm.num_migrants)::BIGINT as total_migrants
+    FROM flows_country_to_country_monthly fcm
+    LEFT JOIN m49_regions r_from ON fcm.country_from = r_from.iso2_code
+    LEFT JOIN m49_regions r_to ON fcm.country_to = r_to.iso2_code
+    WHERE fcm.migration_month >= p_start_date
+      AND fcm.migration_month <= p_end_date
+      AND (p_from_country IS NULL OR p_from_country = 'all' OR fcm.country_from = p_from_country)
+      AND (p_to_country IS NULL OR p_to_country = 'all' OR fcm.country_to = p_to_country)
+    GROUP BY fcm.country_from, fcm.country_to, r_from.country_name, r_to.country_name
+    ORDER BY SUM(fcm.num_migrants) DESC
+    LIMIT p_limit;
+END;
+$$;
+
+-- Get available countries for corridor selection
+CREATE OR REPLACE FUNCTION get_corridor_countries()
+RETURNS TABLE(
+    iso2_code VARCHAR(2),
+    country_name TEXT,
+    region_name TEXT,
+    has_outbound_flows BOOLEAN,
+    has_inbound_flows BOOLEAN,
+    total_flow_volume BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH country_flows AS (
+        SELECT 
+            r.iso2_code,
+            r.country_name,
+            r.region_name,
+            SUM(CASE WHEN fcm.country_from = r.iso2_code THEN fcm.num_migrants ELSE 0 END) as outbound_total,
+            SUM(CASE WHEN fcm.country_to = r.iso2_code THEN fcm.num_migrants ELSE 0 END) as inbound_total
+        FROM m49_regions r
+        LEFT JOIN flows_country_to_country_monthly fcm 
+            ON (r.iso2_code = fcm.country_from OR r.iso2_code = fcm.country_to)
+        GROUP BY r.iso2_code, r.country_name, r.region_name
+    )
+    SELECT 
+        cf.iso2_code,
+        cf.country_name,
+        cf.region_name,
+        (cf.outbound_total > 0) as has_outbound_flows,
+        (cf.inbound_total > 0) as has_inbound_flows,
+        (cf.outbound_total + cf.inbound_total) as total_flow_volume
+    FROM country_flows cf
+    WHERE (cf.outbound_total > 0 OR cf.inbound_total > 0)
+    ORDER BY (cf.outbound_total + cf.inbound_total) DESC;
+END;
+$$;
+
+-- Enhanced corridor sankey data function with separate FROM and TO country arrays
+CREATE OR REPLACE FUNCTION get_enhanced_corridor_sankey_data(
+    p_from_countries TEXT[] DEFAULT NULL,
+    p_to_countries TEXT[] DEFAULT NULL, 
+    p_from_regions TEXT[] DEFAULT NULL,
+    p_to_regions TEXT[] DEFAULT NULL,
+    p_start_date DATE DEFAULT '2019-01-01',
+    p_end_date DATE DEFAULT '2022-12-31',
+    p_limit INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    country_from VARCHAR(2),
+    country_to VARCHAR(2), 
+    country_from_name TEXT,
+    country_to_name TEXT,
+    total_migrants BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        fcm.country_from,
+        fcm.country_to,
+        COALESCE(r_from.country_name, fcm.country_from) as country_from_name,
+        COALESCE(r_to.country_name, fcm.country_to) as country_to_name,
+        SUM(fcm.num_migrants)::BIGINT as total_migrants
+    FROM flows_country_to_country_monthly fcm
+    LEFT JOIN m49_regions r_from ON fcm.country_from = r_from.iso2_code
+    LEFT JOIN m49_regions r_to ON fcm.country_to = r_to.iso2_code
+    WHERE fcm.migration_month >= p_start_date
+      AND fcm.migration_month <= p_end_date
+      -- FROM country/region filtering
+      AND (
+          (p_from_countries IS NULL AND p_from_regions IS NULL) OR
+          (p_from_countries IS NOT NULL AND fcm.country_from = ANY(p_from_countries)) OR
+          (p_from_regions IS NOT NULL AND fcm.region_from = ANY(p_from_regions))
+      )
+      -- TO country/region filtering  
+      AND (
+          (p_to_countries IS NULL AND p_to_regions IS NULL) OR
+          (p_to_countries IS NOT NULL AND fcm.country_to = ANY(p_to_countries)) OR
+          (p_to_regions IS NOT NULL AND r_to.region_name = ANY(p_to_regions))
+      )
+      -- Prevent circular flows
+      AND fcm.country_from != fcm.country_to
+      -- Only include meaningful flows
+      AND fcm.num_migrants > 0
+    GROUP BY fcm.country_from, fcm.country_to, r_from.country_name, r_to.country_name
+    ORDER BY SUM(fcm.num_migrants) DESC
+    LIMIT p_limit;
 END;
 $$;

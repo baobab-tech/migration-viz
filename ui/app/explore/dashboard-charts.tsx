@@ -2,7 +2,7 @@
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { ResponsiveSankey } from '@nivo/sankey'
-import { DashboardGrid, DashboardCard } from "@/components/dashboard-layout"
+import { DashboardGrid, DashboardCard } from "./dashboard-layout"
 import type { MigrationFilters } from "@/lib/types"
 
 interface DashboardChartsProps {

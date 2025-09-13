@@ -1,275 +1,209 @@
-// biome-ignore-all lint/suspicious/noArrayIndexKey: This file contains only static skeleton components
 import { Suspense } from 'react';
 
-import { DashboardCharts } from '@/components/dashboard-charts';
-import { DashboardCard, DashboardGrid, DashboardLayout } from '@/components/dashboard-layout';
-import { MigrationFiltersClient } from '@/components/migration-filters';
-import { TimeSeriesCharts } from '@/components/time-series-charts';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { COUNTRY_NAME_MAPPINGS } from '@/lib/country-mappings';
-import { initializeCountriesData } from '@/lib/queries';
-import {
-    getDashboardSummaryServer,
-    getMonthlyTotalsServer,
-    getTopCorridorsServer,
-    getQuarterlyDataServer,
-    getSeasonalPatternsServer,
-    searchParamsToFilters
-} from '@/lib/server-queries';
-import type { MigrationFilters as MigrationFiltersType } from '@/lib/types';
+import Link from 'next/link';
 
-// Skeleton loading component for dashboard data
-function DashboardLoading() {
+import { DashboardCard, DashboardGrid } from '@/app/explore/dashboard-layout';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { initializeCountriesData } from '@/lib/queries';
+import { getDashboardSummaryServer } from '@/lib/server-queries';
+
+import { ArrowRight, BarChart3, Database, DatabaseIcon, ExternalLink } from 'lucide-react';
+
+// Summary statistics loading component
+function SummaryLoading() {
     return (
-        <div className='animate-pulse space-y-6'>
-            {/* Summary Statistics Skeleton */}
+        <DashboardGrid columns={4}>
+            <DashboardCard title='Total Migration Flows' className='from-primary/10 to-primary/5 bg-gradient-to-br'>
+                <div className='space-y-2'>
+                    <div className='from-primary/20 to-primary/10 h-8 w-32 animate-pulse rounded bg-gradient-to-r'></div>
+                    <div className='bg-muted/50 h-4 w-28 animate-pulse rounded'></div>
+                </div>
+            </DashboardCard>
+
+            <DashboardCard title='Active Corridors' className='from-chart-2/10 to-chart-2/5 bg-gradient-to-br'>
+                <div className='space-y-2'>
+                    <div className='from-chart-2/20 to-chart-2/10 h-8 w-16 animate-pulse rounded bg-gradient-to-r'></div>
+                    <div className='bg-muted/50 h-4 w-32 animate-pulse rounded'></div>
+                </div>
+            </DashboardCard>
+
+            <DashboardCard title='Average Monthly Flow' className='from-chart-3/10 to-chart-3/5 bg-gradient-to-br'>
+                <div className='space-y-2'>
+                    <div className='from-chart-3/20 to-chart-3/10 h-8 w-28 animate-pulse rounded bg-gradient-to-r'></div>
+                    <div className='bg-muted/50 h-4 w-24 animate-pulse rounded'></div>
+                </div>
+            </DashboardCard>
+
+            <DashboardCard title='Time Period' className='from-chart-4/10 to-chart-4/5 bg-gradient-to-br'>
+                <div className='space-y-2'>
+                    <div className='from-chart-4/20 to-chart-4/10 h-8 w-12 animate-pulse rounded bg-gradient-to-r'></div>
+                    <div className='bg-muted/50 h-4 w-20 animate-pulse rounded'></div>
+                </div>
+            </DashboardCard>
+        </DashboardGrid>
+    );
+}
+
+// Summary statistics component
+async function SummaryStats() {
+    try {
+        // Initialize countries data
+        await initializeCountriesData();
+
+        // Get summary stats with default filters (all data)
+        const summaryStats = await getDashboardSummaryServer({});
+
+        return (
             <DashboardGrid columns={4}>
                 <DashboardCard title='Total Migration Flows' className='from-primary/10 to-primary/5 bg-gradient-to-br'>
-                    <div className='space-y-2'>
-                        <div className='from-primary/20 to-primary/10 h-8 w-32 animate-pulse rounded bg-gradient-to-r'></div>
-                        <div className='bg-muted/50 h-4 w-28 animate-pulse rounded'></div>
-                    </div>
+                    <div className='text-primary text-3xl font-bold'>{summaryStats.totalFlows.toLocaleString()}</div>
+                    <p className='text-muted-foreground mt-1 text-sm'>
+                        Across {summaryStats.uniqueCorridors} corridors
+                    </p>
                 </DashboardCard>
 
                 <DashboardCard title='Active Corridors' className='from-chart-2/10 to-chart-2/5 bg-gradient-to-br'>
-                    <div className='space-y-2'>
-                        <div className='from-chart-2/20 to-chart-2/10 h-8 w-16 animate-pulse rounded bg-gradient-to-r'></div>
-                        <div className='bg-muted/50 h-4 w-32 animate-pulse rounded'></div>
+                    <div className='text-chart-2 text-3xl font-bold'>
+                        {Math.round(summaryStats.uniqueCorridors).toLocaleString()}
                     </div>
+                    <p className='text-muted-foreground mt-1 text-sm'>Country-to-country routes</p>
                 </DashboardCard>
 
                 <DashboardCard title='Average Monthly Flow' className='from-chart-3/10 to-chart-3/5 bg-gradient-to-br'>
-                    <div className='space-y-2'>
-                        <div className='from-chart-3/20 to-chart-3/10 h-8 w-28 animate-pulse rounded bg-gradient-to-r'></div>
-                        <div className='bg-muted/50 h-4 w-24 animate-pulse rounded'></div>
+                    <div className='text-chart-3 text-3xl font-bold'>
+                        {Math.round(summaryStats.avgPeriodFlow).toLocaleString()}
                     </div>
+                    <p className='text-muted-foreground mt-1 text-sm'>Per month average</p>
                 </DashboardCard>
 
                 <DashboardCard title='Time Period' className='from-chart-4/10 to-chart-4/5 bg-gradient-to-br'>
-                    <div className='space-y-2'>
-                        <div className='from-chart-4/20 to-chart-4/10 h-8 w-12 animate-pulse rounded bg-gradient-to-r'></div>
-                        <div className='bg-muted/50 h-4 w-20 animate-pulse rounded'></div>
-                    </div>
+                    <div className='text-chart-4 text-3xl font-bold'>{summaryStats.activeMonths}</div>
+                    <p className='text-muted-foreground mt-1 text-sm'>Months of data</p>
                 </DashboardCard>
             </DashboardGrid>
-
-            {/* Main Visualizations Skeleton */}
-            <DashboardGrid columns={2}>
-                <DashboardCard
-                    title='Migration Flows Over Time'
-                    description='Monthly aggregated migration flows showing temporal and seasonal patterns'>
-                    <div className='bg-muted/20 relative h-80 overflow-hidden rounded-lg'>
-                        <div className='via-muted/40 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent'></div>
-                        {/* Chart skeleton lines */}
-                        <div className='flex h-full items-end justify-between gap-1 p-4'>
-                            {Array.from({ length: 12 }).map((_, i) => (
-                                <div
-                                    key={`chart-bar-${i}`}
-                                    className='bg-primary/20 animate-pulse rounded-sm'
-                                    style={{
-                                        height: `${((i * 7) % 60) + 20}%`,
-                                        width: 'calc(100% / 12 - 4px)',
-                                        animationDelay: `${i * 0.1}s`
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </DashboardCard>
-
-                <DashboardCard
-                    title='Top Migration Corridors'
-                    description='Migration flows visualized as connected pathways with proportional width'>
-                    <div className='bg-muted/20 relative h-80 overflow-hidden rounded-lg'>
-                        <div className='via-muted/40 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent'></div>
-                        {/* Sankey diagram skeleton */}
-                        <div className='flex h-full items-center justify-between p-4'>
-                            {/* Source nodes */}
-                            <div className='space-y-4'>
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                    <div
-                                        key={`sankey-source-${i}`}
-                                        className='bg-primary/20 h-6 w-20 animate-pulse rounded'
-                                        style={{ animationDelay: `${i * 0.2}s` }}
-                                    />
-                                ))}
-                            </div>
-
-                            {/* Connection lines */}
-                            <div className='relative mx-8 flex-1'>
-                                {Array.from({ length: 4 }).map((_, i) => (
-                                    <div
-                                        key={`sankey-flow-${i}`}
-                                        className='from-primary/20 to-chart-2/20 my-6 h-2 animate-pulse rounded bg-gradient-to-r'
-                                        style={{
-                                            animationDelay: `${i * 0.3}s`,
-                                            width: `${((i * 11) % 40) + 60}%`,
-                                            marginLeft: `${(i * 5) % 20}%`
-                                        }}
-                                    />
-                                ))}
-                            </div>
-
-                            {/* Target nodes */}
-                            <div className='space-y-4'>
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                    <div
-                                        key={`sankey-target-${i}`}
-                                        className='bg-chart-2/20 h-6 w-20 animate-pulse rounded'
-                                        style={{ animationDelay: `${i * 0.2 + 0.1}s` }}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </DashboardCard>
-            </DashboardGrid>
-
-            {/* Time Series Charts Skeleton */}
-            <Card>
-                <CardHeader>
-                    <div className='flex items-center justify-between'>
-                        <div className='space-y-2'>
-                            <div className='bg-muted/50 h-6 w-48 animate-pulse rounded' />
-                            <div className='bg-muted/30 h-4 w-64 animate-pulse rounded' />
-                        </div>
-                        <div className='flex space-x-2'>
-                            <div className='bg-muted/30 h-8 w-20 animate-pulse rounded' />
-                            <div className='bg-muted/30 h-8 w-24 animate-pulse rounded' />
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {/* Search and controls skeleton */}
-                    <div className='mb-6 flex items-center space-x-4'>
-                        <div className='bg-muted/30 h-10 flex-1 animate-pulse rounded' />
-                        <div className='bg-muted/30 h-10 w-32 animate-pulse rounded' />
-                    </div>
-
-                    {/* Tabs skeleton */}
-                    <div className='mb-6 flex space-x-2'>
-                        {Array.from({ length: 4 }).map((_, i) => (
-                            <div
-                                key={`tab-skeleton-${i}`}
-                                className='bg-muted/30 h-8 w-24 animate-pulse rounded'
-                                style={{ animationDelay: `${i * 0.1}s` }}
-                            />
-                        ))}
-                    </div>
-
-                    {/* Chart area skeleton */}
-                    <div className='bg-muted/20 relative h-96 overflow-hidden rounded-lg'>
-                        <div className='via-muted/40 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent'></div>
-                        <div className='flex h-full items-end justify-between gap-1 p-4'>
-                            {Array.from({ length: 24 }).map((_, i) => (
-                                <div
-                                    key={`timeseries-bar-${i}`}
-                                    className='from-primary/20 to-chart-2/20 animate-pulse rounded-sm bg-gradient-to-t'
-                                    style={{
-                                        height: `${((i * 3) % 70) + 10}%`,
-                                        width: 'calc(100% / 24 - 2px)',
-                                        animationDelay: `${i * 0.05}s`
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    );
-}
-
-// Error component for dashboard data
-function DashboardError({ error }: { error: string }) {
-    return (
-        <div className='flex h-64 items-center justify-center'>
-            <div className='text-lg text-red-600'>Error: {error}</div>
-        </div>
-    );
-}
-
-// Dashboard data component that fetches and displays charts
-async function DashboardData({ filters }: { filters: MigrationFiltersType }) {
-    try {
-        // Initialize countries data first
-        await initializeCountriesData();
-
-        // Fetch minimal initial data on the server
-        const [monthlyData, summaryStats, topCorridors, quarterlyData, seasonalPatternsData, availableCorridors] = await Promise.all([
-            getMonthlyTotalsServer(filters),
-            getDashboardSummaryServer(filters),
-            getTopCorridorsServer(filters, 10),
-            getQuarterlyDataServer(filters),
-            getSeasonalPatternsServer(filters),
-            getTopCorridorsServer(filters, 100) // Get more corridors for the available corridors list
-        ]);
-
-        // Use static country names mapping
-        const countryNames = COUNTRY_NAME_MAPPINGS;
-
-        // Transform available corridors data to match expected format
-        const transformedAvailableCorridors = availableCorridors.map(corridor => ({
-            value: corridor.corridor,
-            label: corridor.displayName,
-            total: corridor.total
-        }));
-
-        return (
-            <>
-                <DashboardCharts
-                    monthlyData={monthlyData}
-                    topCorridors={topCorridors}
-                    summaryStats={summaryStats}
-                    countryNames={countryNames}
-                    filters={filters}
-                />
-                <TimeSeriesCharts
-                    filters={filters}
-                    initialCountryNames={countryNames}
-                    initialQuarterlyData={quarterlyData}
-                    initialSeasonalPatternsData={seasonalPatternsData}
-                    initialAvailableCorridors={transformedAvailableCorridors}
-                />
-            </>
         );
     } catch (error) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error loading summary stats:', error);
 
-        return <DashboardError error={error instanceof Error ? error.message : 'Failed to load dashboard data'} />;
+        return (
+            <div className='py-8 text-center'>
+                <div className='text-lg text-red-600'>Error loading summary statistics</div>
+            </div>
+        );
     }
 }
 
-// Server component page
-export default async function MigrationDashboard({
-    searchParams
-}: {
-    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-    // Await the searchParams promise in Next.js 15
-    const resolvedSearchParams = await searchParams;
-
-    // Convert search params to filters
-    const urlParams = new URLSearchParams();
-    Object.entries(resolvedSearchParams).forEach(([key, value]) => {
-        if (typeof value === 'string') {
-            urlParams.set(key, value);
-        } else if (Array.isArray(value)) {
-            urlParams.set(key, value.join(','));
-        }
-    });
-
-    const filters = searchParamsToFilters(urlParams);
-
+export default async function HomePage() {
     return (
-        <DashboardLayout
-            title='Global Migration Flow Dashboard'
-            description='Interactive visualization of migration patterns across countries and regions'>
-            <MigrationFiltersClient initialFilters={filters} />
+        <div className='from-background via-background to-primary/5 min-h-screen bg-gradient-to-br'>
+            <div className='container mx-auto space-y-8 p-6'>
+                {/* Header */}
+                <div className='space-y-4 py-8 text-center'>
+                   
 
-            <Suspense fallback={<DashboardLoading />}>
-                <DashboardData filters={filters} />
-            </Suspense>
-        </DashboardLayout>
+                    <h1 className='from-primary via-primary to-chart-2 bg-gradient-to-r bg-clip-text text-5xl font-bold text-balance text-transparent'>
+                        Migration Flow Dashboard
+                    </h1>
+
+                    <p className='text-muted-foreground mx-auto max-w-2xl text-xl text-pretty'>
+                        Explore global migration patterns with monthly flow data spanning 2019-2022, based on
+                        peer-reviewed research from PNAS.
+                    </p>
+                </div>
+
+                {/* Summary Statistics */}
+                <div className='space-y-2'>
+                    <div className='mb-4 text-center'>
+                        <h2 className='mb-2 text-2xl font-semibold'>Global Overview</h2>
+                        <p className='text-muted-foreground'>Key statistics from the complete dataset</p>
+                    </div>
+
+                    <Suspense fallback={<SummaryLoading />}>
+                        <SummaryStats />
+                    </Suspense>
+                </div>
+
+                {/* Action Cards */}
+                <div className='space-y-6 pt-8'>
+                    {/* Primary Analysis Tools */}
+                    <div className='grid gap-6 md:grid-cols-2'>
+                        <Card className='group border-border/50 shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl'>
+                            <CardHeader>
+                                <CardTitle className='flex items-center gap-2'>
+                                    <BarChart3 className='text-primary h-5 w-5' />
+                                    Explore the Data
+                                </CardTitle>
+                                <CardDescription>
+                                    Interactive charts, filters, and detailed visualizations
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <p className='text-muted-foreground mb-4 text-sm'>
+                                    Dive into migration patterns with time series analysis, corridor comparisons,
+                                    and customizable filtering options, include and exclude countries, regions, and more.
+                                </p>
+                                <Link href='/explore' >
+                                    <Button className='w-full cursor-pointer bg-secondary text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors'>
+                                        Start Exploring
+                                        <ArrowRight className='ml-2 h-4 w-4' />
+                                    </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+
+                        <Card className='group border-border/50 shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl'>
+                            <CardHeader>
+                                <CardTitle className='flex items-center gap-2'>
+                                    <ArrowRight className='text-chart-3 h-5 w-5' />
+                                    Corridor Analysis
+                                </CardTitle>
+                                <CardDescription>Focused analysis of specific country-to-country flows</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <p className='text-muted-foreground mb-4 text-sm'>
+                                    Analyze migration flows between specific countries with sankey diagrams, timeline
+                                    charts, and detailed corridor comparisons.
+                                </p>
+                                <Link href='/corridor' >
+                                    <Button className='w-full cursor-pointer bg-secondary text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors'>
+                                        Analyze Corridors
+                                        <ArrowRight className='ml-2 h-4 w-4' />
+                                    </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+
+                {/* About the Data */}
+                <div className='mx-auto max-w-2xl space-y-4 text-center'>
+                    <div className='mb-4 flex items-center justify-center gap-2'>
+                        <DatabaseIcon className='text-chart-2 h-5 w-5' />
+                        <h2 className='text-2xl font-semibold'>About the Source Data</h2>
+                    </div>
+                    <div className='text-muted-foreground'>
+                        Learn about the orginal peer-reviewed research, data collection methodology, and access to
+                        original sources.
+                        <Link
+                            className='text-muted-foreground inline-flex items-center gap-2 text-sm'
+                            href='/about-data'>
+                            <Button variant='outline' size='sm' className='ml-2'>
+                                Learn More
+                                <ExternalLink className='ml-2 h-4 w-4' />
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className='border-border/20 border-t py-8 text-center'>
+                    <p className='text-muted-foreground text-sm'>
+                        This is an independent data exploration project with no affiliation with the research authors or their institutions.
+                    </p>
+                </div>
+            </div>
+        </div>
     );
 }

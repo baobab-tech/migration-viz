@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useCallback, useState, useEffect } from "react"
-import { AdvancedFilters, type ExtendedFilterState } from "@/components/advanced-filters"
+import { AdvancedFilters, type ExtendedFilterState } from "./advanced-filters"
 import { loadCountriesData } from "@/lib/queries"
 import type { MigrationFilters } from "@/lib/types"
 
