@@ -82,10 +82,45 @@ Seasonal pattern analysis with statistical aggregations, supporting multiple tim
 
 **Returns:** `(month TEXT, average BIGINT, max_value BIGINT, min_value BIGINT)`
 
+### Visualization Functions
+
+#### `get_corridor_sankey_data()`
+Returns filtered migration flows for Sankey diagram visualization.
+
+**Parameters:**
+- `p_start_date`, `p_end_date` - Date range
+- `p_min_flow` - Minimum flow threshold (default: 1000)
+
+**Returns:** `(source TEXT, target TEXT, value BIGINT)`
+
+#### `get_corridor_countries()`
+Returns unique country list for corridor filtering UI components.
+
+**Returns:** `(country_code VARCHAR(2), country_name VARCHAR(100), total_as_source BIGINT, total_as_destination BIGINT)`
+
+#### `get_enhanced_corridor_sankey_data()`
+Enhanced Sankey data with regional groupings and comprehensive filtering.
+
+**Parameters:**
+- Standard filtering parameters
+- `p_min_flow` - Minimum flow threshold (default: 1000)
+- `p_limit` - Maximum number of corridors (default: 100)
+
+**Returns:** `(source TEXT, target TEXT, value BIGINT, source_region TEXT, target_region TEXT)`
+
 ## 📊 Pattern Analysis Functions (pattern_analysis_functions.sql)
 
 ### `get_migration_patterns()`
 Advanced pattern analysis supporting multiple analysis types and aggregation levels.
+
+**Parameters:**
+- `p_pattern_type` - 'seasonal', 'yoy_growth' (default: 'seasonal')
+- `p_aggregation_level` - 'country', 'region', 'subregion' (default: 'country')
+- `p_start_date`, `p_end_date` - Date range (default: '2019-01-01' to '2022-12-31')
+- `p_corridors[]` - Optional corridor filter
+- `p_regions[]`, `p_countries[]` - Optional regional/country filters
+- `p_time_aggregation` - 'monthly', 'quarterly', 'yearly' (default: 'monthly')
+- `p_limit` - Maximum results (default: 100)
 
 **Pattern Types:**
 - `'seasonal'` - Quarterly seasonal analysis with seasonality index
@@ -102,34 +137,43 @@ Advanced pattern analysis supporting multiple analysis types and aggregation lev
 Regional flow analysis with flexible spatial aggregation.
 
 **Parameters:**
-- `p_aggregation_level` - 'region', 'subregion', 'both'
-- `p_time_aggregation` - 'monthly', 'annual'
+- `p_aggregation_level` - 'region', 'subregion', 'both' (default: 'region')
+- `p_time_aggregation` - 'monthly', 'annual' (default: 'monthly')
+- `p_start_date`, `p_end_date` - Date range (default: '2019-01-01' to '2022-12-31')
+- `p_regions[]` - Optional region filter
+- `p_limit` - Maximum results (default: 50)
 
 **Returns:** `(from_region TEXT, to_region TEXT, from_subregion TEXT, to_subregion TEXT, time_period TEXT, total_migrants BIGINT)`
 
 ## 🗃️ Materialized Views (views.sql)
 
 ### Spatial Aggregation Views
-- `flows_country_to_country_monthly` - Enhanced base view with regional mappings
-- `flows_region_to_country_monthly` - Region-to-country flows
-- `flows_country_to_region_monthly` - Country-to-region flows
-- `flows_regional_monthly` - Region-to-region flows
+- `flows_country_to_country_monthly` - Enhanced base view with regional mappings and seasonal data
+- `flows_region_to_country_monthly` - Region-to-country aggregated flows
+- `flows_country_to_region_monthly` - Country-to-region aggregated flows  
+- `flows_regional_monthly` - Region-to-region aggregated flows
 
 ### Temporal Aggregation Views
-- `flows_country_to_country_quarterly` - Quarterly aggregation
-- `flows_country_to_country_annual` - Annual aggregation
-- `flows_regional_annual` - Regional annual flows
+- `flows_country_to_country_quarterly_totals` - Quarterly aggregation with regional mappings
+- `flows_country_to_country_annual_totals` - Annual aggregation with regional mappings
+- `flows_regional_annual` - Regional annual flow summaries
 
 ### Performance Optimization Views
 - `flows_corridor_monthly_agg` - Pre-computed corridor data with rolling averages
-- `flows_rolling_averages_top100` - Rolling averages for top 100 corridors
-- `country_migration_summary` - Country-level summary statistics
-- `top_migration_corridors` - Pre-ranked top corridors by period
+- `flows_rolling_averages_top100` - 3-month rolling averages for top 100 corridors
+- `country_migration_summary` - Country-level summary statistics with rankings
+- `top_migration_corridors` - Pre-ranked top corridors by period and region
 
 ### Advanced Analytics Views
-- `flows_net_annual_country` - Net migration calculations
-- `flows_corridor_rankings_annual` - Corridor rankings with percentiles
-- `flows_growth_rates_annual` - Year-over-year growth rates
+- `flows_gross_annual_country` - Gross outflow and inflow totals by country
+- `flows_net_annual_country` - Net migration calculations by country and year
+- `flows_corridor_rankings_annual` - Annual corridor rankings with percentiles
+- `flows_growth_rates_annual` - Year-over-year growth rates and trends
+
+### Utility Functions
+- `refresh_migration_views()` - Refreshes all materialized views in dependency order
+- `enable_public_read_access()` - Configures RLS policies for public read access  
+- `analyze_migration_tables()` - Updates table statistics for query optimization
 
 ## ⚡ Performance Features
 

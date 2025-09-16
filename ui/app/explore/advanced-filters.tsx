@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import Fuse from "fuse.js"
-import { useLocalStorage } from "usehooks-ts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Filter, Save, Download, RefreshCw, CalendarIcon, Globe, Settings, X, BookmarkIcon } from "lucide-react"
+import { Search, Filter, RefreshCw, CalendarIcon, Globe, Settings, X } from "lucide-react"
 import type { FilterState } from "@/lib/types"
 import { countries, getAvailableRegions, loadCountriesData } from "@/lib/queries"
 import { COUNTRY_NAME_MAPPINGS } from "@/lib/country-mappings"
@@ -43,90 +41,90 @@ export interface ExtendedFilterState extends FilterState {
   seasonalityFilter: boolean
 }
 
-// Default presets
-const DEFAULT_PRESETS: { name: string; filters: ExtendedFilterState }[] = [
-  {
-    name: "European Focus",
-    filters: {
-      dateRange: ["2019-01", "2022-12"],
-      selectedRegions: ["Europe"],
-      selectedCountries: [],
-      minFlowSize: 0,
-      maxFlowSize: 10000000,
-      viewType: "absolute",
-      searchQuery: "",
-      excludedCountries: [],
-      excludedRegions: [],
-      flowDirection: "all",
-      timeAggregation: "quarterly",
-      showTrends: true,
-      highlightAnomalies: false,
-      correlationThreshold: 0.6,
-      volatilityFilter: [10, 90],
-      seasonalityFilter: false,
-    }
-  },
-  {
-    name: "Major Flows Only",
-    filters: {
-      dateRange: ["2020-01", "2022-12"],
-      selectedRegions: [],
-      selectedCountries: [],
-      minFlowSize: 10000,
-      maxFlowSize: 10000000,
-      viewType: "absolute",
-      searchQuery: "",
-      excludedCountries: [],
-      excludedRegions: [],
-      flowDirection: "all",
-      timeAggregation: "yearly",
-      showTrends: true,
-      highlightAnomalies: true,
-      correlationThreshold: 0.7,
-      volatilityFilter: [0, 70],
-      seasonalityFilter: true,
-    }
-  },
-  {
-    name: "Regional Analysis",
-    filters: {
-      dateRange: ["2019-01", "2022-12"],
-      selectedRegions: ["Africa", "Asia"],
-      selectedCountries: [],
-      minFlowSize: 50,
-      maxFlowSize: 10000000,
-      viewType: "per-capita",
-      searchQuery: "",
-      excludedCountries: [],
-      excludedRegions: [],
-      flowDirection: "all",
-      timeAggregation: "monthly",
-      showTrends: false,
-      highlightAnomalies: true,
-      correlationThreshold: 0.5,
-      volatilityFilter: [0, 100],
-      seasonalityFilter: false,
-    }
-  }
-]
+// // Default presets
+// const DEFAULT_PRESETS: { name: string; filters: ExtendedFilterState }[] = [
+//   {
+//     name: "European Focus",
+//     filters: {
+//       dateRange: ["2019-01", "2022-12"],
+//       selectedRegions: ["Europe"],
+//       selectedCountries: [],
+//       minFlowSize: 0,
+//       maxFlowSize: 10000000,
+//       viewType: "absolute",
+//       searchQuery: "",
+//       excludedCountries: [],
+//       excludedRegions: [],
+//       flowDirection: "all",
+//       timeAggregation: "quarterly",
+//       showTrends: true,
+//       highlightAnomalies: false,
+//       correlationThreshold: 0.6,
+//       volatilityFilter: [10, 90],
+//       seasonalityFilter: false,
+//     }
+//   },
+//   {
+//     name: "Major Flows Only",
+//     filters: {
+//       dateRange: ["2020-01", "2022-12"],
+//       selectedRegions: [],
+//       selectedCountries: [],
+//       minFlowSize: 10000,
+//       maxFlowSize: 10000000,
+//       viewType: "absolute",
+//       searchQuery: "",
+//       excludedCountries: [],
+//       excludedRegions: [],
+//       flowDirection: "all",
+//       timeAggregation: "yearly",
+//       showTrends: true,
+//       highlightAnomalies: true,
+//       correlationThreshold: 0.7,
+//       volatilityFilter: [0, 70],
+//       seasonalityFilter: true,
+//     }
+//   },
+//   {
+//     name: "Regional Analysis",
+//     filters: {
+//       dateRange: ["2019-01", "2022-12"],
+//       selectedRegions: ["Africa", "Asia"],
+//       selectedCountries: [],
+//       minFlowSize: 50,
+//       maxFlowSize: 10000000,
+//       viewType: "per-capita",
+//       searchQuery: "",
+//       excludedCountries: [],
+//       excludedRegions: [],
+//       flowDirection: "all",
+//       timeAggregation: "monthly",
+//       showTrends: false,
+//       highlightAnomalies: true,
+//       correlationThreshold: 0.5,
+//       volatilityFilter: [0, 100],
+//       seasonalityFilter: false,
+//     }
+//   }
+// ]
 
-export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedPresets: propSavedPresets }: AdvancedFiltersProps) {
-  const [presetName, setPresetName] = useState("")
+export function AdvancedFilters({ filters, onFiltersChange }: AdvancedFiltersProps) {
+  // const [presetName, setPresetName] = useState("")
   const [isExpanded, setIsExpanded] = useState(false)
   const [availableRegions, setAvailableRegions] = useState<string[]>([])
   const [dataLoaded, setDataLoaded] = useState(false)
   const [countryNames, setCountryNames] = useState<Record<string, string>>({})
-  const [currentPreset, setCurrentPreset] = useState<string | null>(null)
-  const [customPresets, setCustomPresets] = useLocalStorage('migration-viz-presets', [] as { name: string; filters: ExtendedFilterState }[])
+  // const [currentPreset, setCurrentPreset] = useState<string | null>(null)
+  // const [customPresets, setCustomPresets] = useLocalStorage('migration-viz-presets', [] as { name: string; filters: ExtendedFilterState }[])
 
-  // Combine default presets with custom presets
-  const savedPresets = useMemo(() => {
-    if (propSavedPresets) {
-      return propSavedPresets
-    }
+  // // Combine default presets with custom presets
+  // const savedPresets = useMemo(() => {
+  //   if (propSavedPresets) {
+  //     return propSavedPresets
+  //   }
 
-    return [...DEFAULT_PRESETS, ...customPresets]
-  }, [propSavedPresets, customPresets])
+  //   return [...DEFAULT_PRESETS, ...customPresets]
+  // }, [propSavedPresets, customPresets])
   
   // Keep search query internal - don't propagate to parent until selection is made
   const [internalSearchQuery, setInternalSearchQuery] = useState("")
@@ -155,21 +153,21 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
   }, [])
 
 
-  // Check if current filters match the selected preset - if not, clear preset selection
-  useEffect(() => {
-    if (currentPreset) {
-      const preset = savedPresets.find(p => p.name === currentPreset)
-      if (preset) {
-        // Deep compare filters (excluding searchQuery which is internal)
-        const { searchQuery: _, ...currentFiltersClean } = filters
-        const { searchQuery: __, ...presetFiltersClean } = preset.filters
-        
-        if (JSON.stringify(currentFiltersClean) !== JSON.stringify(presetFiltersClean)) {
-          setCurrentPreset(null)
-        }
-      }
-    }
-  }, [filters, currentPreset, savedPresets])
+  // // Check if current filters match the selected preset - if not, clear preset selection
+  // useEffect(() => {
+  //   if (currentPreset) {
+  //     const preset = savedPresets.find(p => p.name === currentPreset)
+  //     if (preset) {
+  //       // Deep compare filters (excluding searchQuery which is internal)
+  //       const { searchQuery: _, ...currentFiltersClean } = filters
+  //       const { searchQuery: __, ...presetFiltersClean } = preset.filters
+  //       
+  //       if (JSON.stringify(currentFiltersClean) !== JSON.stringify(presetFiltersClean)) {
+  //         setCurrentPreset(null)
+  //       }
+  //     }
+  //   }
+  // }, [filters, currentPreset, savedPresets])
 
   // Debounce internal search query
   useEffect(() => {
@@ -297,8 +295,8 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
     setExcludeCountrySearch("")
     setExcludeRegionSearch("")
     
-    // Clear current preset
-    setCurrentPreset(null)
+    // // Clear current preset
+    // setCurrentPreset(null)
     
     const cleared: ExtendedFilterState = {
       dateRange: ["2019-01", "2022-12"],
@@ -321,45 +319,45 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
     onFiltersChange(cleared)
   }, [onFiltersChange])
 
-  const loadPreset = useCallback((preset: { name: string; filters: ExtendedFilterState }) => {
-    // Clear all search queries when loading preset
-    setInternalSearchQuery("")
-    setExcludeCountrySearch("")
-    setExcludeRegionSearch("")
-    
-    // Set current preset
-    setCurrentPreset(preset.name)
-    
-    onFiltersChange(preset.filters)
-  }, [onFiltersChange])
+  // const loadPreset = useCallback((preset: { name: string; filters: ExtendedFilterState }) => {
+  //   // Clear all search queries when loading preset
+  //   setInternalSearchQuery("")
+  //   setExcludeCountrySearch("")
+  //   setExcludeRegionSearch("")
+  //   
+  //   // Set current preset
+  //   setCurrentPreset(preset.name)
+  //   
+  //   onFiltersChange(preset.filters)
+  // }, [onFiltersChange])
 
-  const saveCurrentPreset = useCallback(() => {
-    if (presetName.trim()) {
-      const newPreset = { name: presetName.trim(), filters }
-      
-      // Check if preset name already exists in custom presets
-      const existingIndex = customPresets.findIndex(p => p.name === newPreset.name)
-      
-      if (existingIndex >= 0) {
-        // Update existing preset
-        const updatedPresets = [...customPresets]
-        updatedPresets[existingIndex] = newPreset
-        setCustomPresets(updatedPresets)
-      } else {
-        // Add new preset
-        setCustomPresets([...customPresets, newPreset])
-      }
-      
-      setCurrentPreset(newPreset.name)
-      
-      // Call parent callback if provided
-      if (onSavePreset) {
-        onSavePreset(presetName.trim(), filters)
-      }
-      
-      setPresetName("")
-    }
-  }, [presetName, filters, onSavePreset, customPresets, setCustomPresets])
+  // const saveCurrentPreset = useCallback(() => {
+  //   if (presetName.trim()) {
+  //     const newPreset = { name: presetName.trim(), filters }
+  //     
+  //     // Check if preset name already exists in custom presets
+  //     const existingIndex = customPresets.findIndex(p => p.name === newPreset.name)
+  //     
+  //     if (existingIndex >= 0) {
+  //       // Update existing preset
+  //       const updatedPresets = [...customPresets]
+  //       updatedPresets[existingIndex] = newPreset
+  //       setCustomPresets(updatedPresets)
+  //     } else {
+  //       // Add new preset
+  //       setCustomPresets([...customPresets, newPreset])
+  //     }
+  //     
+  //     setCurrentPreset(newPreset.name)
+  //     
+  //     // Call parent callback if provided
+  //     if (onSavePreset) {
+  //       onSavePreset(presetName.trim(), filters)
+  //     }
+  //     
+  //     setPresetName("")
+  //   }
+  // }, [presetName, filters, onSavePreset, customPresets, setCustomPresets])
 
   const addCountryFromSearch = useCallback((countryCode: string) => {
     if (!filters.selectedCountries.includes(countryCode)) {
@@ -480,11 +478,6 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                 active
               </Badge>
             )}
-            {currentPreset && (
-              <Badge variant="outline" className="ml-2 text-xs border-blue-500 text-blue-600 dark:text-blue-400">
-                Preset: {currentPreset}
-              </Badge>
-            )}
           </CardTitle>
           {hasActiveFilters && (
             <Button variant="outline" size="sm" onClick={clearAllFilters} className="text-xs bg-transparent">
@@ -577,65 +570,98 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
           </div>
         )}
 
-        {/* Preset Management */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Preset name..."
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              className="w-32 text-xs"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={saveCurrentPreset}
-              disabled={!presetName.trim()}
-              className="text-xs bg-transparent"
+        {/* Basic Controls - Always Visible */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          {/* Time Aggregation */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Time Aggregation</Label>
+            <Select
+              value={filters.timeAggregation}
+              onValueChange={(value: "monthly" | "quarterly" | "yearly") => updateFilters({ timeAggregation: value })}
             >
-              <Save className="h-3 w-3 mr-1" />
-              Save
-            </Button>
-          </div>
-          {savedPresets.length > 0 && (
-            <Select value={currentPreset || ""} onValueChange={(value) => {
-              const preset = savedPresets.find((p) => p.name === value)
-              if (preset) loadPreset(preset)
-            }}>
-              <SelectTrigger className="w-40 text-xs">
-                <SelectValue placeholder="Load preset..." />
+              <SelectTrigger className="text-xs">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {savedPresets.map((preset) => (
-                  <SelectItem key={preset.name} value={preset.name}>
-                    <div className="flex items-center gap-2">
-                      <BookmarkIcon className={`h-3 w-3 ${DEFAULT_PRESETS.find(p => p.name === preset.name) ? 'text-neutral-500' : 'text-green-500'}`} />
-                      {preset.name}
-                      {DEFAULT_PRESETS.find(p => p.name === preset.name) && (
-                        <span className="text-xs text-neutral-600 dark:text-neutral-400">(default)</span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="quarterly">Quarterly</SelectItem>
+                <SelectItem value="yearly">Yearly</SelectItem>
               </SelectContent>
             </Select>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="text-xs">
-            <Settings className="h-3 w-3 mr-1" />
-            {isExpanded ? "Less Options" : "More Options"}
-          </Button>
+          </div>
+
+          {/* Exclude Countries Search */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Exclude Countries</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search countries to exclude..."
+                value={excludeCountrySearch}
+                onChange={(e) => setExcludeCountrySearch(e.target.value)}
+                className="pl-10 text-xs"
+                disabled={!dataLoaded}
+              />
+              {excludeCountryResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {excludeCountryResults.map((countryCode: string) => (
+                    <button
+                      key={countryCode}
+                      type="button"
+                      onClick={() => addExcludedCountryFromSearch(countryCode)}
+                      className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
+                    >
+                      <Globe className="h-3 w-3 text-orange-500" />
+                      {countryNames[countryCode] || countryCode} ({countryCode})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Exclude Regions Search */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Exclude Regions</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search regions to exclude..."
+                value={excludeRegionSearch}
+                onChange={(e) => setExcludeRegionSearch(e.target.value)}
+                className="pl-10 text-xs"
+                disabled={!dataLoaded}
+              />
+              {excludeRegionResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {excludeRegionResults.map((region: string) => (
+                    <button
+                      key={region}
+                      type="button"
+                      onClick={() => addExcludedRegionFromSearch(region)}
+                      className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
+                    >
+                      <Globe className="h-3 w-3 text-orange-500" />
+                      {region}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* More Options Button */}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="text-xs">
+              <Settings className="h-3 w-3 mr-1" />
+              {isExpanded ? "Fewer Options" : "More Options"}
+            </Button>
+          </div>
         </div>
 
-        {/* Expanded Filters */}
+        {/* Advanced Options */}
         {isExpanded && (
-          <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="basic">Basic</TabsTrigger>
-              <TabsTrigger value="advanced">Advanced</TabsTrigger>
-              <TabsTrigger value="display">Export</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="basic" className="space-y-4">
+          <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Date Range */}
                 <div className="space-y-2">
@@ -675,41 +701,35 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                   </div>
                 </div>
 
-                {/* Time Aggregation */}
+                {/* Sliders in Same Row */}
+                {/* Volatility Filter */}
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Time Aggregation</Label>
-                  <Select
-                    value={filters.timeAggregation}
-                    onValueChange={(value: "monthly" | "quarterly" | "yearly") => updateFilters({ timeAggregation: value })}
-                  >
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="yearly">Yearly</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-sm font-medium">
+                    Volatility Range: {filters.volatilityFilter[0]}% - {filters.volatilityFilter[1]}%
+                  </Label>
+                  <Slider
+                    value={filters.volatilityFilter}
+                    onValueChange={(value) => updateFilters({ volatilityFilter: value as [number, number] })}
+                    max={100}
+                    step={5}
+                    className="w-full"
+                  />
                 </div>
 
-                {/* Flow Direction - Hidden until fully implemented in DB functions */}
-                {/* <div className="space-y-2">
-                  <Label className="text-sm font-medium">Flow Direction</Label>
-                  <Select
-                    value={filters.flowDirection}
-                    onValueChange={(value: "all" | "inbound" | "outbound") => updateFilters({ flowDirection: value })}
-                  >
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Flows</SelectItem>
-                      <SelectItem value="inbound">Inbound Only</SelectItem>
-                      <SelectItem value="outbound">Outbound Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div> */}
+                {/* Correlation Threshold */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Correlation Threshold: {filters.correlationThreshold.toFixed(2)}
+                  </Label>
+                  <Slider
+                    value={[filters.correlationThreshold]}
+                    onValueChange={([value]) => updateFilters({ correlationThreshold: value })}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    className="w-full"
+                  />
+                </div>
               </div>
 
               {/* Flow Size Range */}
@@ -761,122 +781,7 @@ export function AdvancedFilters({ filters, onFiltersChange, onSavePreset, savedP
                   </div>
                 </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="advanced" className="space-y-4">
-              {/* Exclusion Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Exclude Countries Search */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Exclude Countries</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search countries to exclude..."
-                      value={excludeCountrySearch}
-                      onChange={(e) => setExcludeCountrySearch(e.target.value)}
-                      className="pl-10 text-xs"
-                      disabled={!dataLoaded}
-                    />
-                    {excludeCountryResults.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {excludeCountryResults.map((countryCode: string) => (
-                          <button
-                            key={countryCode}
-                            type="button"
-                            onClick={() => addExcludedCountryFromSearch(countryCode)}
-                            className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
-                          >
-                            <Globe className="h-3 w-3 text-orange-500" />
-                            {countryNames[countryCode] || countryCode} ({countryCode})
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Exclude Regions Search */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Exclude Regions</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search regions to exclude..."
-                      value={excludeRegionSearch}
-                      onChange={(e) => setExcludeRegionSearch(e.target.value)}
-                      className="pl-10 text-xs"
-                      disabled={!dataLoaded}
-                    />
-                    {excludeRegionResults.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {excludeRegionResults.map((region: string) => (
-                          <button
-                            key={region}
-                            type="button"
-                            onClick={() => addExcludedRegionFromSearch(region)}
-                            className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm flex items-center gap-2"
-                          >
-                            <Globe className="h-3 w-3 text-orange-500" />
-                            {region}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Sliders in Same Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Volatility Filter */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    Volatility Range: {filters.volatilityFilter[0]}% - {filters.volatilityFilter[1]}%
-                  </Label>
-                  <Slider
-                    value={filters.volatilityFilter}
-                    onValueChange={(value) => updateFilters({ volatilityFilter: value as [number, number] })}
-                    max={100}
-                    step={5}
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Correlation Threshold */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    Correlation Threshold: {filters.correlationThreshold.toFixed(2)}
-                  </Label>
-                  <Slider
-                    value={[filters.correlationThreshold]}
-                    onValueChange={([value]) => updateFilters({ correlationThreshold: value })}
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-
-            <TabsContent value="display" className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                Display options and export functionality will be available in the full version.
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="text-xs bg-transparent">
-                  <Download className="h-3 w-3 mr-1" />
-                  Export Data
-                </Button>
-                <Button variant="outline" size="sm" className="text-xs bg-transparent">
-                  <Download className="h-3 w-3 mr-1" />
-                  Export Chart
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
+            </div>
         )}
       </CardContent>
     </Card>
