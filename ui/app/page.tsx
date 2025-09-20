@@ -185,7 +185,8 @@ export default async function HomePage() {
                     </div>
                     <div className='text-muted-foreground'>
                         Learn about the orginal peer-reviewed research, data collection methodology, and access to
-                        original sources.
+                        original sources.<br /><br />
+                        <span className="italic text-sm">Caution: this data represents all types of migration (from aggregated data from Facebook) and is therefore a mix of both regular and irregular and should not be use for any policy decisions.</span>
                         <Link
                             className='text-muted-foreground inline-flex items-center gap-2 text-sm'
                             href='/about-data'>

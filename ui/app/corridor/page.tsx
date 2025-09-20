@@ -127,7 +127,8 @@ export default async function CorridorAnalysis({ searchParams }: CorridorAnalysi
               Migration Corridor Analysis
             </h1>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Analyze migration flows between countries, regions, and the world with interactive visualizations
+              Analyze migration flows between countries, regions, and the world with interactive visualizations.<br /><br />
+              <span className="italic text-sm">Caution: this data represents all types of migration (from aggregated data from Facebook) and is therefore a mix of both regular and irregular and should not be use for any policy decisions.</span>
             </p>
           </div>
 
