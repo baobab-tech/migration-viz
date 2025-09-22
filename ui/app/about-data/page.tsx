@@ -31,7 +31,7 @@ export default function AboutDataPage() {
         {/* Disclaimer */}
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
           <p className="text-sm text-amber-800 dark:text-amber-200 text-center">
-            <strong>Disclaimer:</strong> This visualization is an independent project and we have no affiliation with the research authors or their institutions. Further more, this data represents all types of migration (from aggregated data from Facebook) and is therefore a mix of both regular and irregular migration and should not be use for any policy decisions.
+            <strong>Disclaimer:</strong> This visualization is an independent project and we have no affiliation with the research authors or their institutions. Further more, this data represents all types of migration (from aggregated data from Facebook) and is therefore a mix of both regular and irregular migration and should not be used for any policy decisions.
           </p>
         </div>
 
